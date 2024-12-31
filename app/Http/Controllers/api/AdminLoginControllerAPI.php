@@ -39,6 +39,14 @@ class AdminLoginControllerAPI extends Controller
             ], 404);
         }
 
+        //check if branch is active or not 
+        if(!$isBranchAvailable->active){
+            return response()->json([
+                'error' => true,
+                'message' => 'Branch Is not active Kindly Contact to the Admin',
+            ], 404);
+        }
+
         // Compare the hashed password
         if (!EncryptionAndCompare::compare($validated['password'], $isBranchAvailable->password)){
             return response()->json([
@@ -49,6 +57,7 @@ class AdminLoginControllerAPI extends Controller
 
         // Prepare response data
         $responseData = [
+            'branch_id' => $isBranchAvailable->id,
             'email' => $isBranchAvailable->email_id,
             'branchCode' => $isBranchAvailable->branch_code,
             'branchName' => $isBranchAvailable->branch_name,
@@ -73,8 +82,7 @@ class AdminLoginControllerAPI extends Controller
 
     public function logout(Request $request)
     {
-        // $request->session()->put('is_admin_logged_in', false);
-        // return response()->json(['message' => 'Logout successful']);
-        return response()->json(['message' => 'Logout successful']);
+        $request->session()->flush(); // Clear all session data
+        return redirect('/admin/login')->with('message', 'Logged out successfully.');
     }
 }

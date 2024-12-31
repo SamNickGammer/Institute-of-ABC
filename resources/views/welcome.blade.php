@@ -68,22 +68,29 @@
 
     <!-- Template Stylesheet -->
     <link rel="stylesheet" href="{{ asset('assets/css/app.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.css" />
 </head>
 
 <body class="">
 
     @include('layout.header')
 
-    @if (@isset($component))
-        @include($component)
-    @endif
+    <div class="!mt-[124px]">
+        @if (@isset($component))
+            @include($component)
+        @endif
+    </div>
 
     @include('layout.footer')
 
     <!-- Template Javascript -->
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js"></script>
     <script src="{{ asset('assets/js/main.js') }}"></script>
     <script src="{{ asset('assets/js/jquery.min.js')}}"></script>
     <script src="{{ asset('assets/js/owl.carousel.min.js')}}"></script>
+
 
     <script>
         $('.owl-galary').owlCarousel({

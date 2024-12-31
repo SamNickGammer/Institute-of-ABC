@@ -137,7 +137,7 @@
  }
 </style>
 
-<div>
+<div class="!mt-[-124px]"">
     <img src="{{asset('assets/images/home/background1.png')}}" alt="" class="h-screen w-screen object-cover">
     <div class="mt-[75px] flex flex-col gap-[35px]">
         @include('components.topicTitle', ['heading' => 'Certified By'])
