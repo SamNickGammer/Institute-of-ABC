@@ -42,8 +42,8 @@
 </div> --}}
 
 <div
-    class="header_container flex flex-col w-full md:h-[124px] border-b-1 border-line-mid h-[75px] fixed top-[5px] backdrop-filter backdrop-blur-2xl bg-opacity-10 z-[999]">
-    <div class="h-[40px] border-b-1 border-line-thin justify-between items-center px-[75px] hidden md:flex pb-[5px]">
+    class="header_container flex flex-col w-full md:h-[124px] border-b-1 border-line-mid h-[75px] fixed top-0 backdrop-filter backdrop-blur-2xl bg-opacity-10 z-[999]">
+    <div class="h-[40px] border-b-1 border-line-thin justify-between items-center px-[75px] hidden md:flex pb-[5px] pt-[5px]">
         <div class="flex gap-[20px] justify-center">
             @foreach ($socials as $social)
                 <a href="{{ $social['onClick'] }}">
@@ -60,7 +60,7 @@
             @endforeach
         </div>
         <div class="flex gap-[20px] justify-center">
-            <a href="/admin/login" class=" flex justify-center items-center">
+            <a href="/admin" class=" flex justify-center items-center">
                 <div class="font-HellixSB text-[12px]">ADMINISTRATOR PORTAL</div>
             </a>
             <button
@@ -95,7 +95,7 @@
             
         </div>
     </div>
-    <div>
+    <div class="marquee">
         <marquee class="flex border-b-1 border-line-thin mt-[15px] font-HellixB" direction="left" behavior="scroll" scrollamount="12">
             <p>This is new Version of "Insitute of ABC" website, that is still under development. You can acceess that on Desktop easily. Kindly use desktop for better experience.</p>
         </marquee>
@@ -134,8 +134,17 @@
     </div>
 </div>
 
+<script>
+    const marquee = document.querySelector('.marquee');
+    window.addEventListener('scroll', () => {
+        if (window.scrollY > 200) {
+            marquee.classList.add('opacity-0');
+        } else {
+            marquee.classList.remove('opacity-0');
+        }
+    });
 
-
+</script>
 
 
 <script>
@@ -165,19 +174,3 @@
         }
     });
 </script>
-
-{{-- <script>
-    var spinner = function () {
-        setTimeout(function () {
-            var spinnerElement = document.getElementById('spinner');
-            if (spinnerElement) {
-                spinnerElement.classList.add('opacity-0');
-                setTimeout(function () {
-                    spinnerElement.style.display = 'none'; 
-                }, 300);
-            }
-        }, 1000);
-    };
-
-    spinner();
-</script> --}}

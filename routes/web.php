@@ -20,8 +20,9 @@ Route::get('/student_info', [StudentInfoController::class, 'index'])->name('stud
 // Protected routes for Admin UI
 Route::prefix('admin')->name('admin.')->group(function () {
     Route::get('/login', [ADMINLoginControllerWEB::class, 'login'])->name('login');
-    // Route::get('/logout', [ADMINLoginControllerWEB::class, 'logout'])->name('logout');
 
-    Route::get('/', [ADMINDashboardControllerWEB::class, 'dashboard'])->name('/');
+    Route::get('/', [ADMINDashboardControllerWEB::class, 'dashboard'])->name('dashboard');
+    Route::get('/add-new-student', [ADMINDashboardControllerWEB::class, 'dashboard'])->name('addNewStudent');
+    Route::get('/all-students', [ADMINDashboardControllerWEB::class, 'dashboard'])->name('allStudents');
     
 });

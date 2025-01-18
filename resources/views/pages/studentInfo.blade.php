@@ -38,26 +38,36 @@
                 onclick="searchSudent()" />
         </form>
     </div>
+    <div class="hidden h-[50vh]" id='spinner'>
+        @include('admin.components.spinner')
+    </div>
+
     <div class="hidden" id="student-details">
         <div class="max-w-7xl mx-auto p-6 bg-gray-50 min-h-[60vh]">
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <!-- Left Column -->
                 <div class="lg:col-span-1">
                     <div class="bg-white rounded-lg shadow-lg p-6">
-                        <img 
-                            src="{{asset('assets/images/default_avatar.jpg')}}"
-                            alt="Student Photo"
-                            class="w-full h-64 object-cover rounded-lg mb-4"
-                        />
+                        <div class="relative">
+                            <img 
+                                src="{{asset('assets/images/default_avatar.jpg')}}"
+                                alt="Student Photo"
+                                class="w-full h-64 object-cover rounded-lg mb-4"
+                            />
+                            <div class="absolute bottom-[5px] right-[5px] bg-black p-2 rounded-full text-white px-[15px] py-[5px]" id='marksheetIdData'></div>
+                        </div>
                         
-                        <div class="flex gap-4 mb-6" id="certificateStatus">
+                        <div class="hidden gap-4 mb-6" id="certificateStatus">
                             <div class="flex-1 bg-green-50 p-4 rounded-lg">
-                                <i data-lucide="check-circle-2" class="w-6 h-6 text-green-500 mb-2"></i>
                                 <p class="text-sm font-medium">Certificate Verified</p>
                             </div>
                             <div class="flex-1 bg-blue-50 p-4 rounded-lg">
-                                <i data-lucide="check-circle-2" class="w-6 h-6 text-blue-500 mb-2"></i>
                                 <p class="text-sm font-medium">Marksheet Verified</p>
+                            </div>
+                        </div>
+                        <div class="hidden gap-4 mb-6" id="certificateNotProvided">
+                            <div class="flex-1 bg-red-50 p-4 rounded-lg">
+                                <p class="text-sm font-medium justify-center flex">Certificate Not Provided</p>
                             </div>
                         </div>
     
@@ -82,6 +92,10 @@
                             <button data-tab="academic" class="flex items-center px-6 py-4 text-gray-500">
                                 <i data-lucide="graduation-cap" class="w-5 h-5 mr-2"></i>
                                 Academic Details
+                            </button>
+                            <button data-tab="branch" class="flex items-center px-6 py-4 text-gray-500">
+                                <i data-lucide="graduation-cap" class="w-5 h-5 mr-2"></i>
+                                Branch Details
                             </button>
                             <button data-tab="fees" class="flex items-center px-6 py-4 text-gray-500">
                                 <i data-lucide="credit-card" class="w-5 h-5 mr-2"></i>
@@ -117,9 +131,22 @@
                                 </div>
                             </div>
     
-                            <!-- Academic Details Tab -->
+                            <!-- Branch Details Tab -->
+                            <div data-tab-content="branch" class="tab-content" id='branchTableId'>
+                                <div class="overflow-x-auto mt-6">
+                                    <table class="w-full" id="branchTable">
+                                        <tbody>
+                                           
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
                             <div data-tab-content="academic" class="tab-content" id='marksTableId'>
-                                <div class="overflow-x-auto">
+                                <div class="flex justify-center items-center">
+                                    <div id='degreeName'></div>
+                                </div>
+                                <div class="overflow-x-auto mt-6">
                                     <table class="w-full" id="marksTable">
                                         <thead>
                                             <tr class="bg-gray-50">
@@ -140,7 +167,7 @@
                                         <p class="text-lg font-semibold">Overall Percentage: <span id="overallPercentage"></span>%</p>
                                         <p class="text-md text-gray-600">Performance: <span id="performance"></span></p>
                                     </div>
-                                    <div class="space-x-4 flex">
+                                    {{-- <div class="space-x-4 flex">
                                         <button class="bg-blue-500 text-white px-4 py-2 rounded-lg flex items-center">
                                             <i data-lucide="download" class="w-4 h-4 mr-2"></i>
                                             Download Certificate
@@ -149,7 +176,7 @@
                                             <i data-lucide="download" class="w-4 h-4 mr-2"></i>
                                             Download Marksheet
                                         </button>
-                                    </div>
+                                    </div> --}}
                                 </div>
                             </div>
     
@@ -221,6 +248,7 @@
 <script>
     const outputDiv = document.getElementById('student-details');
     const loginContainer = document.getElementById('login-container');
+    const spinner = document.getElementById('spinner')
 
     document.addEventListener('DOMContentLoaded', async function () {
         const params = new URLSearchParams(window.location.search);
@@ -229,14 +257,14 @@
 
         if (registrationNumber && dob) {
             loginContainer.style.display = 'none';
-            outputDiv.style.display = 'block';
+            spinner.style.display = 'block';
             await fetchStudentDetails(registrationNumber, dob);
         }
     });
 
     function fetchStudentDetails(registrationNumber, dob) {
-        const API_URL_WEB = "http://localhost:8000/api";
-        const endpoint = `${API_URL_WEB}/admin/branch/get_student_details`;
+        const API_URL_WEB = `https://abcedupro.com/api`;
+        const endpoint = `${API_URL_WEB}/get_student_details`;
 
         fetch(endpoint, {
             method: 'POST',
@@ -252,6 +280,8 @@
             .then((result) => {
                 if (result.error) {
                     toastr.error(result.message || "Failed to fetch student details.");
+                    spinner.style.display = 'none';
+                    loginContainer.style.display = 'flex'
                 } else {
                     displayStudentDetails(result.data);
                     // toastr.success("Student data retrieved successfully.");
@@ -275,9 +305,13 @@
         document.getElementById('address').textContent = data.address;
         document.getElementById('city').textContent = data.city;
         document.getElementById('state').textContent = `${data.state} - ${data.zip}`;
+
+        document.getElementById('degreeName').innerHTML = `
+            <p class="text-lg font-semibold">${data.course_name} (${data.short_form}) - ${data.course_duration} Months</p>
+        ` 
         
         // Update Aadhaar
-        document.getElementById('aadhaarNumber').textContent = data.aadhaar_number ? formatAadhaarNumber(data.aadhaar_number) : "Aadhaar Not found";
+        document.getElementById('aadhaarNumber').textContent = data.aadhaar_number;
         
         // Update marks table
         if(data.marksheet_stage === 'verified') {
@@ -302,9 +336,19 @@
             // Update performance and percentage
             document.getElementById('overallPercentage').textContent = data.overall_percent;
             document.getElementById('performance').textContent = data.performance;
+            document.getElementById('certificateNotProvided').style.display = 'none'
+            document.getElementById('certificateStatus').style.display = 'flex'
         } else {
+            document.getElementById('certificateNotProvided').style.display = 'flex'
+            document.getElementById('certificateStatus').style.display = 'none'
             document.getElementById('certificateStatus').style.display = 'none';
             document.getElementById('marksTableId').innerHTML = '<p class="text-center">Marksheet not verified yet.</p>';
+        }
+
+        if(data.marksheet_id) {
+            document.getElementById('marksheetIdData').textContent = `# ${data.marksheet_id}`;
+        }else {
+            document.getElementById('marksheetIdData').style.display = 'none';
         }
         
         
@@ -320,10 +364,41 @@
         
         // Update student photo
         document.querySelector('img[alt="Student Photo"]').src = data.student_photo ?? "{{ asset('assets/images/default_avatar.jpg') }}";
-    }
 
-    function formatAadhaarNumber(number) {
-        return number.replace(/(\d{4})/g, '$1 ').trim();
+        //Update Student Branch Details
+        const branchTableBody = document.querySelector('#branchTable tbody');
+        branchTableBody.innerHTML = `
+                 <tr>
+                    <td class="px-4 py-2 font-bold">Branch Name</td>
+                    <td class="px-4 py-2">${data.branch_name}</td>
+                </tr>
+                <tr>
+                    <td class="px-4 py-2 font-bold">Branch Code</td>
+                    <td class="px-4 py-2">${data.branch_code}</td>
+                </tr>
+                <tr>
+                    <td class="px-4 py-2 font-bold">Address</td>
+                    <td class="px-4 py-2">${data.branch_address_line1}</td>
+                </tr>
+                <tr>
+                    <td class="px-4 py-2 font-bold">City</td>
+                    <td class="px-4 py-2">${data.branch_city}</td>
+                </tr>
+                <tr>
+                    <td class="px-4 py-2 font-bold">State</td>
+                    <td class="px-4 py-2">${data.branch_state}</td>
+                </tr>
+                <tr>
+                    <td class="px-4 py-2 font-bold">Zip</td>
+                    <td class="px-4 py-2">${data.branch_zip}</td>
+                </tr>
+                <tr>
+                    <td class="px-4 py-2 font-bold">Branch Contact</td>
+                    <td class="px-4 py-2">${data.branch_phone}</td>
+                </tr>
+            `
+        spinner.style.display = 'none';
+        outputDiv.style.display = 'block';
     }
 
     function calculateMarks(marksJson) {

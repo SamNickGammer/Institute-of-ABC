@@ -85,7 +85,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js"></script>
 
     <script>
-        const API_URL_WEB = "http://localhost:8000/api";
+        const API_URL_WEB = `https://abcedupro.com/api`;
 
         async function loginBranch() {
             const branchId = document.getElementById('branchId').value;
@@ -97,7 +97,7 @@
             }
 
             try {
-                const response = await fetch(`${API_URL_WEB}/admin/login`, {
+                const response = await fetch(`${API_URL_WEB}/admin-login`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',

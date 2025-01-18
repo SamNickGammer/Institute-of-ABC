@@ -169,7 +169,8 @@ class AdminBranchControllerAPI extends Controller
                 $image = $request->file('manager_photo');
                 
                 // Create directory for manager photos if not exists
-                $directoryPath = public_path('manager/' . $adminProfileId);
+                $directoryPath = 'manager/' . $adminProfileId;
+                // $directoryPath = public_path('manager/' . $adminProfileId);
                 if (!file_exists($directoryPath)) {
                     mkdir($directoryPath, 0755, true);
                 }
@@ -392,7 +393,8 @@ class AdminBranchControllerAPI extends Controller
             if ($request->hasFile('manager_photo')) {
                 $image = $request->file('manager_photo');
                 
-                $directoryPath = public_path('manager/' . $branch->id);
+                $directoryPath = 'manager/' . $branch->id;
+                // $directoryPath = public_path('manager/' . $branch->id);
                 if (!file_exists($directoryPath)) {
                     mkdir($directoryPath, 0755, true);
                 }
@@ -586,11 +588,11 @@ class AdminBranchControllerAPI extends Controller
             ], 500);
         }
     }
-
+    //Todo
     public function updateCoursePrice(Request $request){}
-
+    //Todo
     public function updateFeeDetails(Request $request){}
-
+    //Todo
     public function getFeeDetails(Request $request){}
 
     public function calculateRelievingDate(Request $request)
@@ -749,7 +751,8 @@ class AdminBranchControllerAPI extends Controller
                 $image = $request->file('student_photo');
                 
                 // Create directory for manager photos if not exists
-                $directoryPath = public_path('student_photo/' . $studentId);
+                $directoryPath = 'student_photo/' . $studentId;
+                // $directoryPath = public_path('student_photo/' . $studentId);
                 if (!file_exists($directoryPath)) {
                     mkdir($directoryPath, 0755, true);
                 }
@@ -870,7 +873,8 @@ class AdminBranchControllerAPI extends Controller
             if ($request->hasFile('student_photo')) {
                 $image = $request->file('student_photo');
 
-                $directoryPath = public_path('student_photo/' . $data['student_id']);
+                $directoryPath = 'student_photo/' . $data['student_id'];
+                // $directoryPath = public_path('student_photo/' . $data['student_id']);
                 if (!file_exists($directoryPath)) {
                     mkdir($directoryPath, 0755, true);
                 }
@@ -1312,6 +1316,21 @@ class AdminBranchControllerAPI extends Controller
             // Check if the registration number exists
             $student = DB::table('student')
                 ->where('registration_number', $validated['registration_number'])
+                ->leftJoin('branch', 'student.branch_id', '=', 'branch.id')
+                ->leftJoin('courses', 'student.student_course_id', '=', 'courses.course_id')
+                ->select(
+                    'student.*',
+                    'courses.course_name',
+                    'courses.short_form',
+                    'courses.course_duration',
+                    'branch.branch_code',
+                    'branch.branch_name',
+                    'branch.address_line1 as branch_address_line1',
+                    'branch.city as branch_city',
+                    'branch.state as branch_state',
+                    'branch.zip as branch_zip',
+                    'branch.phone as branch_phone'
+                )
                 ->first();
     
             if (!$student) {
@@ -1329,6 +1348,11 @@ class AdminBranchControllerAPI extends Controller
                 ], 422);
             }
     
+            // Mask sensitive data
+            $student->student_phone = $this->maskPhoneNumber($student->student_phone);
+            $student->student_email = $this->maskEmail($student->student_email);
+            $student->aadhaar_number = $this->maskAadhaarNumber($student->aadhaar_number);
+    
             // Return student details if both checks pass
             return response()->json([
                 'error' => false,
@@ -1344,6 +1368,58 @@ class AdminBranchControllerAPI extends Controller
         }
     }
     
+    // Helper methods
+    private function maskPhoneNumber($phone)
+    {
+        // Remove spaces and validate phone number length
+        $phone = preg_replace('/\s+/', '', $phone);
+    
+        if (!$phone || strlen($phone) < 10) {
+            return 'NO CONTACT';
+        }
+    
+        // Extract first 3 visible digits and last 2 visible digits
+        $firstThree = substr($phone, 0, 3);
+        $lastTwo = substr($phone, -2);
+    
+        // Handle cases with prefix like +91 or 0
+        if (substr($phone, 0, 1) === '+') {
+            $firstThree = substr($phone, 0, 4); // Include +91
+            $middleMasked = str_repeat('*', strlen($phone) - 6); // Mask middle digits
+            return $firstThree . ' ' . $middleMasked . $lastTwo;
+        } elseif (substr($phone, 0, 1) === '0') {
+            $firstThree = substr($phone, 0, 2); // Include 0
+            $middleMasked = str_repeat('*', strlen($phone) - 4); // Mask middle digits
+            return $firstThree . str_repeat('*', strlen($phone) - 4) . $lastTwo;
+        }
+    
+        // Default case for standard 10-digit numbers
+        $middleMasked = str_repeat('*', strlen($phone) - 2);
+        return $middleMasked . $lastTwo;
+    }
+    
+    private function maskEmail($email)
+    {
+        if (!$email || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return 'NO EMAIL';
+        }
+    
+        $parts = explode('@', $email);
+        $name = $parts[0];
+        $domain = $parts[1];
+    
+        $maskedName = substr($name, 0, 1) . str_repeat('*', strlen($name) - 2) . substr($name, -1);
+        return $maskedName . '@' . $domain;
+    }
 
+    private function maskAadhaarNumber($aadhaar)
+    {
+        if(!$aadhaar || strlen($aadhaar) !== 12) {
+            return "NO AADHAAR";
+        }
+        return '**** **** **** ' . substr($aadhaar, -4);
+    }
+    
+    
 
 }

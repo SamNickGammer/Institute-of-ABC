@@ -5,11 +5,9 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\api\AdminLoginControllerAPI;
 use App\Http\Controllers\api\AdminBranchControllerAPI;
 
+Route::post('/admin-login', [AdminLoginControllerAPI::class, 'login']);
+Route::post('/get_student_details', [AdminBranchControllerAPI::class, 'getStudentDetailsByRegistrationNumber']);
 Route::prefix('admin')->name('admin.')->group(function () {
-    Route::post('/login', [AdminLoginControllerAPI::class, 'login']);
-    Route::post('/logout', [AdminLoginControllerAPI::class, 'logout']);
-
-    //Main Routing regurding work
     Route::get('/branch', [AdminBranchControllerAPI::class, 'getBranchDetails']);
     Route::get('/branch/getAll', [AdminBranchControllerAPI::class, 'getAllBranch']);
     Route::post('/branch/register', [AdminBranchControllerAPI::class, 'createBranch']);
@@ -32,8 +30,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
     Route::post('/branch/student/add_certification', [AdminBranchControllerAPI::class, 'updateMarksWithCertification']);
     Route::post('/branch/get_all_students', [AdminBranchControllerAPI::class, 'getStudentsByBranch']);
     Route::get('/branch/student/get_next_marksheet_no', [AdminBranchControllerAPI::class, 'getNextMarksheetId']);
-    Route::post('/branch/get_student_details', [AdminBranchControllerAPI::class, 'getStudentDetailsByRegistrationNumber']);
     
     Route::post('/branch/add_credit', [AdminBranchControllerAPI::class, 'addCreditToBranch']);
+    Route::post('/branch/get_credit', [AdminBranchControllerAPI::class, 'getCreditOfBranch']);
 });
 

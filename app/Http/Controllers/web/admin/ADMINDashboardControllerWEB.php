@@ -10,6 +10,8 @@ class ADMINDashboardControllerWEB extends Controller
     //
     public function dashboard()
     {
-        return view('admin.admin');
+        return view('admin.admin',[
+            'component' => 'admin.pages.dashboard'
+        ]);
     }
 }
