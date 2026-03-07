@@ -28,7 +28,7 @@
 
     @include('layout.header')
 
-    <div class="!mt-[124px]">
+    <div class="{{ Route::currentRouteName() !== 'home' ? 'pt-[110px]' : '' }}">
         @if (@isset($component))
             @include($component)
         @endif

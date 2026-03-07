@@ -6,6 +6,7 @@ use App\Http\Controllers\web\AboutController;
 use App\Http\Controllers\web\CourseController;
 use App\Http\Controllers\web\GalleryController;
 use App\Http\Controllers\web\StudentInfoController;
+use App\Http\Controllers\web\ContactController;
 use App\Http\Controllers\web\admin\ADMINLoginControllerWEB;
 use App\Http\Controllers\web\admin\ADMINDashboardControllerWEB;
 use App\Http\Controllers\web\superadmin\SuperAdminControllerWEB;
@@ -16,6 +17,7 @@ Route::get('/about', [AboutController::class, 'index'])->name('about');
 Route::get('/course', [CourseController::class, 'index'])->name('course');
 Route::get('/gallery', [GalleryController::class, 'index'])->name('gallery');
 Route::get('/student_info', [StudentInfoController::class, 'index'])->name('student_info');
+Route::get('/contact', [ContactController::class, 'index'])->name('contact');
 
 
 // Branch Panel (was /admin, now /branch)
