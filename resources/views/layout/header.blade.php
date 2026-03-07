@@ -135,42 +135,36 @@
 </div>
 
 <script>
-    const marquee = document.querySelector('.marquee');
-    window.addEventListener('scroll', () => {
-        if (window.scrollY > 200) {
-            marquee.classList.add('opacity-0');
-        } else {
-            marquee.classList.remove('opacity-0');
-        }
-    });
+    document.addEventListener('DOMContentLoaded', function() {
+        var marquee = document.querySelector('.marquee');
+        var scrollTicking = false;
+        window.addEventListener('scroll', function() {
+            if (!scrollTicking) {
+                requestAnimationFrame(function() {
+                    marquee.classList.toggle('opacity-0', window.scrollY > 200);
+                    scrollTicking = false;
+                });
+                scrollTicking = true;
+            }
+        });
 
-</script>
+        document.getElementById('burger-icon').addEventListener('click', function() {
+            document.getElementById('mobile-menu').classList.remove('-translate-x-full');
+        });
+        document.getElementById('close-menu').addEventListener('click', function() {
+            document.getElementById('mobile-menu').classList.add('-translate-x-full');
+        });
 
-
-<script>
-    const burgerIcon = document.getElementById('burger-icon');
-    const mobileMenu = document.getElementById('mobile-menu');
-    const closeMenu = document.getElementById('close-menu');
-
-    burgerIcon.addEventListener('click', () => {
-        mobileMenu.classList.remove('-translate-x-full');
-    });
-
-    closeMenu.addEventListener('click', () => {
-        mobileMenu.classList.add('-translate-x-full');
-    });
-
-    const accordionButton = document.getElementById('accordion-button');
-    const accordionContent = document.getElementById('accordion-content');
-    const accordionIcon = document.getElementById('accordion-icon');
-
-    accordionButton.addEventListener('click', () => {
-        if (accordionContent.style.maxHeight) {
-            accordionContent.style.maxHeight = null;
-            accordionIcon.style.transform = "rotate(0deg)";
-        } else {
-            accordionContent.style.maxHeight = accordionContent.scrollHeight + "px";
-            accordionIcon.style.transform = "rotate(180deg)";
-        }
+        var accordionContent = document.getElementById('accordion-content');
+        var accordionIcon = document.getElementById('accordion-icon');
+        document.getElementById('accordion-button').addEventListener('click', function() {
+            if (accordionContent.style.maxHeight) {
+                accordionContent.style.maxHeight = null;
+                accordionIcon.style.transform = "rotate(0deg)";
+            } else {
+                accordionContent.style.maxHeight = accordionContent.scrollHeight + "px";
+                accordionIcon.style.transform = "rotate(180deg)";
+            }
+        });
     });
 </script>

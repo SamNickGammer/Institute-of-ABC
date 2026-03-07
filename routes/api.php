@@ -9,7 +9,7 @@ Route::post('/admin-login', [AdminLoginControllerAPI::class, 'login']);
 Route::post('/get_student_details', [AdminBranchControllerAPI::class, 'getStudentDetailsByRegistrationNumber']);
 Route::prefix('admin')->name('admin.')->group(function () {
     Route::get('/branch', [AdminBranchControllerAPI::class, 'getBranchDetails']);
-    Route::get('/branch/getAll', [AdminBranchControllerAPI::class, 'getAllBranch']);
+    Route::post('/branch/getAll', [AdminBranchControllerAPI::class, 'getAllBranch']);
     Route::post('/branch/register', [AdminBranchControllerAPI::class, 'createBranch']);
     Route::post('/branch/change_password', [AdminBranchControllerAPI::class, 'changePasswordForBranch']);
     Route::post('/branch/reset_password', [AdminBranchControllerAPI::class, 'resetPasswordForBranch']);
@@ -33,5 +33,10 @@ Route::prefix('admin')->name('admin.')->group(function () {
     
     Route::post('/branch/add_credit', [AdminBranchControllerAPI::class, 'addCreditToBranch']);
     Route::post('/branch/get_credit', [AdminBranchControllerAPI::class, 'getCreditOfBranch']);
+
+    // Super Admin endpoints
+    Route::post('/verify-admin', [AdminBranchControllerAPI::class, 'verifyAdmin']);
+    Route::post('/get_all_students_all_branches', [AdminBranchControllerAPI::class, 'getAllStudentsAllBranches']);
+    Route::post('/admin/set_password', [AdminBranchControllerAPI::class, 'adminSetPasswordForBranch']);
 });
 

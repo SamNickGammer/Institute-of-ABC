@@ -138,16 +138,16 @@
 </style>
 
 <div class="!mt-[-124px]"">
-    <img src="{{asset('assets/images/home/background1.png')}}" alt="" class="h-screen w-screen object-cover">
+    <img src="{{asset('assets/images/home/background1.png')}}" alt="Institute of ABC" class="h-screen w-screen object-cover" fetchpriority="high">
     <div class="mt-[75px] flex flex-col gap-[35px]">
         @include('components.topicTitle', ['heading' => 'Certified By'])
         <div class="h-[85px] flex gap-[30px] justify-center items-center">
-                <img class="object-contain h-[85px]" src="{{asset('assets/images/certified/iso-certified.png')}}" alt="">
-                <img class="object-contain h-[85px]" src="{{asset('assets/images/certified/BiharGovernment.png')}}" alt="">
-                <img class="object-contain h-[85px]" src="{{asset('assets/images/certified/png-clipart.png')}}" alt="">
-                <img class="object-contain h-[85px]" src="{{asset('assets/images/certified/png-clipart-skill.png')}}" alt="">
-                <img class="object-contain h-[85px]" src="{{asset('assets/images/certified/hep.png')}}" alt="">
-                <img class="object-contain h-[85px]" src="{{asset('assets/images/certified/microsoft.png')}}" alt="">
+                <img class="object-contain h-[85px]" loading="lazy" src="{{asset('assets/images/certified/iso-certified.png')}}" alt="">
+                <img class="object-contain h-[85px]" loading="lazy" src="{{asset('assets/images/certified/BiharGovernment.png')}}" alt="">
+                <img class="object-contain h-[85px]" loading="lazy" src="{{asset('assets/images/certified/png-clipart.png')}}" alt="">
+                <img class="object-contain h-[85px]" loading="lazy" src="{{asset('assets/images/certified/png-clipart-skill.png')}}" alt="">
+                <img class="object-contain h-[85px]" loading="lazy" src="{{asset('assets/images/certified/hep.png')}}" alt="">
+                <img class="object-contain h-[85px]" loading="lazy" src="{{asset('assets/images/certified/microsoft.png')}}" alt="">
         </div>
     </div>
     <div class="mt-[75px] flex flex-col gap-[35px]">
@@ -155,7 +155,7 @@
         <div class="h-[230px] flex gap-[30px] justify-center items-center">
             @foreach ($courses as $course)
                 <div class="w-[210px] bg-white rounded-[10px] shadow-md h-[230px]">
-                    <img src="{{asset($course['image'])}}" alt="Random Image" class="w-full h-[170px] object-cover rounded-t-[10px] ">
+                    <img src="{{asset($course['image'])}}" alt="{{$course['title']}}" loading="lazy" class="w-full h-[170px] object-cover rounded-t-[10px]">
                     <div class="p-2 bg-grayD9 rounded-b-[10px] h-[60px]">
                         <div class="text-[14px] font-HellixB">{{$course['title']}}</div>
                         <div class="text-[10px] font-HellixR text-gray-600">{{$course['description']}}</div>
@@ -171,7 +171,7 @@
             <div class="flex gap-[30px] items-center absolute will-change-transform animate-marquee track">
                 @foreach ($testimonials as $testimonial)
                     <div class="w-[425px] h-[115px] bg-gray-300 rounded-[10px] shadow-md flex items-center gap-4 mb-4">
-                        <img src="{{ asset($testimonial['image']) }}" alt="User Image" class="w-[100px] h-[115px] object-cover rounded-[10px]">
+                        <img src="{{ asset($testimonial['image']) }}" alt="{{ $testimonial['name'] }}" loading="lazy" class="w-[100px] h-[115px] object-cover rounded-[10px]">
             
                         <div class="flex flex-col justify-center">
                             <div class="flex gap-2 items-center mb-1">
@@ -204,7 +204,7 @@
             <div class="owl-carousel owl-galary owl-theme">
                 @foreach ($galleries as $gallery)
                     <div class="min-w-[300px] h-[250px] snap-center flex items-center justify-center relative group/item">
-                        <img src="{{ asset($gallery['image']) }}" alt="Image 1" class="object-cover rounded-[10px] h-[250px]">
+                        <img src="{{ asset($gallery['image']) }}" alt="{{ $gallery['title'] }}" loading="lazy" class="object-cover rounded-[10px] h-[250px]">
                         <div class="absolute inset-0 bg-black bg-opacity-50 flex flex-col gap-[10px] px-[10px] justify-center rounded-[10px] items-center opacity-0 group-hover/item:opacity-100 transition-all">
                             <h2 class="text-white text-2xl font-bold font-HellixSB">{{$gallery['title']}}</h2>
                             <p class="text-white font-HellixR text-center">{{ Str::limit($gallery['description'], 90, '...') }}</p>

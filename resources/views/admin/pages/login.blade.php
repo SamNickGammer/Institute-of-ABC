@@ -5,63 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login</title>
-    <link
-        href="https://fonts.googleapis.com/css2?family=Raleway:wght@400;700&family=Hellix:wght@100;200;300;400;500;600;700;800&display=swap"
-        rel="stylesheet">
     @vite('resources/css/app.css')
-    <style>
-        @layer base {
-            @font-face {
-                font-family: 'Hellix-Black';
-                src: url("{{ asset('assets/fonts/Hellix-Black.woff2') }}") format('woff2'),
-                    url("{{ asset('assets/fonts/Hellix-Black.woff') }}") format('woff');
-            }
-
-            @font-face {
-                font-family: 'Hellix-Bold';
-                src: url("{{ asset('assets/fonts/Hellix-Bold.woff2') }}") format('woff2'),
-                    url("{{ asset('assets/fonts/Hellix-Bold.woff') }}") format('woff');
-            }
-
-            @font-face {
-                font-family: 'Hellix-ExtraBold';
-                ;
-                src: url("{{ asset('assets/fonts/Hellix-ExtraBold.woff2') }}") format('woff2'),
-                    url("{{ asset('assets/fonts/Hellix-ExtraBold.woff') }}") format('woff');
-            }
-
-            @font-face {
-                font-family: 'Hellix-Light';
-                src: url("{{ asset('assets/fonts/Hellix-Light.woff2') }}") format('woff2'),
-                    url("{{ asset('assets/fonts/Hellix-Light.woff') }}") format('woff');
-            }
-
-            @font-face {
-                font-family: 'Hellix-Medium';
-                src: url("{{ asset('assets/fonts/Hellix-Medium.woff2') }}") format('woff2'),
-                    url("{{ asset('assets/fonts/Hellix-Medium.woff') }}") format('woff');
-            }
-
-            @font-face {
-                font-family: 'Hellix-Regular';
-                src: url("{{ asset('assets/fonts/Hellix-Regular.woff2') }}") format('woff2'),
-                    url("{{ asset('assets/fonts/Hellix-Regular.woff') }}") format('woff');
-            }
-
-            @font-face {
-                font-family: 'Hellix-SemiBold';
-                src: url("{{ asset('assets/fonts/Hellix-SemiBold.woff2') }}") format('woff2'),
-                    url("{{ asset('assets/fonts/Hellix-SemiBold.woff') }}") format('woff');
-            }
-
-            @font-face {
-                font-family: 'Hellix-Thin';
-                src: url("{{ asset('assets/fonts/Hellix-Thin.woff2') }}") format('woff2'),
-                    url("{{ asset('assets/fonts/Hellix-Thin.woff') }}") format('woff');
-            }
-
-        }
-    </style>
+    @include('layout.fonts')
     <link rel="stylesheet" href="{{ asset('assets/css/app.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.css" />
 </head>
@@ -81,11 +26,11 @@
             onclick="loginBranch()" />
     </form>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js" defer></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js" defer></script>
 
     <script>
-        const API_URL_WEB = `https://abcedupro.com/api`;
+        const API_URL_WEB = `{{ rtrim(config('app.url'), '/') }}/api`;
 
         async function loginBranch() {
             const branchId = document.getElementById('branchId').value;
@@ -115,10 +60,10 @@
                     toastr.success(result.message || 'Login successful.');
 
                     const branchData = result.data;
-                    const expiryTime = Date.now() + 30 * 60 * 1000; 
+                    const expiryTime = Date.now() + 30 * 60 * 1000;
                     sessionStorage.setItem('branchData', JSON.stringify({ branchData, expiryTime }));
 
-                    window.location.href = '/admin';
+                    window.location.href = '/branch';
                 } else {
                     toastr.error(result.message || 'Login failed.');
                 }
@@ -134,16 +79,13 @@
 
         function checkSessionExpiration() {
             const sessionData = sessionStorage.getItem('branchData');
-            
+
             if (sessionData) {
                 const parsedData = JSON.parse(sessionData);
                 const { expiryTime } = parsedData;
 
-                if (Date.now() > expiryTime) {
-                    return;
-                } else {
-                    window.location.href = '/admin';
-                    return;
+                if (Date.now() <= expiryTime) {
+                    window.location.href = '/branch';
                 }
             }
         }

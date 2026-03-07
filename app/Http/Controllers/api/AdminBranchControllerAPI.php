@@ -17,10 +17,31 @@ class AdminBranchControllerAPI extends Controller
 {
     public function getAllBranch(Request $request)
     {
+        $validator = Validator::make($request->all(), [
+            'admin_branch_id' => 'required|exists:branch,id',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'error' => true,
+                'message' => 'Unauthorized. Admin credentials required.',
+            ], 403);
+        }
+
         try {
+            // Verify caller is admin
+            $admin = DB::table('branch')->where('id', $request->admin_branch_id)->first();
+            if (!$admin || $admin->role !== 'admin') {
+                return response()->json([
+                    'error' => true,
+                    'message' => 'Unauthorized. Admin access required.',
+                ], 403);
+            }
+
             $showActiveOnly = $request->input('showActiveOnly', false);
 
             $branches = DB::table('branch')
+                ->select('id', 'branch_code', 'branch_name', 'first_name', 'last_name', 'phone', 'email_id', 'address_line1', 'address_line2', 'city', 'state', 'zip', 'image', 'role', 'active', 'credit', 'credit_per_certificate', 'created_at', 'updated_at')
                 ->when($showActiveOnly, function ($query) {
                     return $query->where('active', true);
                 })
@@ -564,7 +585,7 @@ class AdminBranchControllerAPI extends Controller
         $showActiveOnly = $request->input('showActiveOnly', false);
 
         try {
-            $query = DB::table('courses')->select('course_id', 'course_name', 'short_form', 'course_duration', 'course_fees', 'course_status', 'created_at', 'updated_at');
+            $query = DB::table('courses')->select('course_id', 'course_name', 'short_form', 'course_duration', 'course_fees', 'course_status', 'subjects', 'created_at', 'updated_at');
 
             if ($showActiveOnly) {
                 $query->where('course_status', 'active');
@@ -652,18 +673,18 @@ class AdminBranchControllerAPI extends Controller
             ], 400);
         }
 
-        $lastRegistration = DB::table('student')
-            ->where('branch_id', $validated['branch_id'])
-            ->orderBy('registration_number', 'desc')
-            ->value('registration_number');
+        $branchCodeLen = strlen($branchCode);
 
-        if (!$lastRegistration) {
+        $maxSequence = DB::table('student')
+            ->where('branch_id', $validated['branch_id'])
+            ->selectRaw('MAX(CAST(SUBSTRING(registration_number, ?) AS UNSIGNED)) as max_seq', [$branchCodeLen + 1])
+            ->value('max_seq');
+
+        if (!$maxSequence) {
             return $branchCode . '0001';
         }
 
-        // Extract numeric part after branch code
-        $sequenceNumber = (int) substr($lastRegistration, strlen($branchCode));
-        $nextSequence = str_pad($sequenceNumber + 1, 4, '0', STR_PAD_LEFT);
+        $nextSequence = str_pad($maxSequence + 1, strlen((string) $maxSequence), '0', STR_PAD_LEFT);
 
         return $branchCode . $nextSequence;
     }
@@ -815,6 +836,10 @@ class AdminBranchControllerAPI extends Controller
             'admission_date' => 'nullable|date|date_format:Y-m-d',
             'relieving_date' => 'nullable|date|date_format:Y-m-d|after_or_equal:admission_date',
             'student_photo' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
+            'aadhaar_number' => 'nullable|string|max:16',
+            'total_fees' => 'nullable|numeric|min:0',
+            'paid_fees' => 'nullable|numeric|min:0',
+            'due_fees' => 'nullable|numeric|min:0',
         ]);
 
         if ($validator->fails()) {
@@ -848,12 +873,23 @@ class AdminBranchControllerAPI extends Controller
             }
 
             // Disallowed updates
-            if ($request->has('aadhaar_number') || $request->has('registration_number') || $request->has('branch_id')) {
+            if ($request->has('registration_number') || $request->has('branch_id')) {
                 return response()->json([
                     "error" => true,
                     'code' => 400,
-                    'message' => 'Cannot update Aadhaar number, registration number, or branch ID',
+                    'message' => 'Cannot update registration number or branch ID',
                 ], 400);
+            }
+
+            // Aadhaar can only be set if currently empty
+            if ($request->has('aadhaar_number') && !empty($request->aadhaar_number)) {
+                if (!empty($student->aadhaar_number)) {
+                    return response()->json([
+                        "error" => true,
+                        'code' => 400,
+                        'message' => 'Aadhaar number already exists and cannot be changed',
+                    ], 400);
+                }
             }
 
             DB::beginTransaction();
@@ -997,7 +1033,8 @@ class AdminBranchControllerAPI extends Controller
             $students = DB::table('student')
                 ->join('courses', 'student.student_course_id', '=', 'courses.course_id')
                 ->where('student.branch_id', $data['branch_id'])
-                ->select('student.*', 'courses.course_name', 'courses.short_form') 
+                ->select('student.*', 'courses.course_name', 'courses.short_form')
+                ->orderByRaw('CAST(SUBSTRING(student.registration_number, 7) AS UNSIGNED) DESC')
                 ->get();
 
             return response()->json([
@@ -1022,7 +1059,8 @@ class AdminBranchControllerAPI extends Controller
         // Validate the request
         $validator = Validator::make($request->all(), [
             'student_id' => 'required|exists:student,student_id',
-            'marks' => 'required|string', 
+            'marks' => 'required|string',
+            'branch_id' => 'required|exists:branch,id',
         ]);
 
         if ($validator->fails()) {
@@ -1046,6 +1084,35 @@ class AdminBranchControllerAPI extends Controller
                 ], 404);
             }
 
+            // Check branch credit
+            $branch = DB::table('branch')
+                ->where('id', $validated['branch_id'])
+                ->select('credit', 'credit_per_certificate')
+                ->first();
+
+            if (!$branch) {
+                return response()->json([
+                    'error' => true,
+                    'code' => 404,
+                    'message' => 'Branch not found',
+                ], 404);
+            }
+
+            $chargeAmount = $branch->credit_per_certificate ?? 200;
+
+            // Only charge if this is the first time adding marks (no existing marks)
+            $isFirstMarksheet = empty($student->marks);
+
+            if ($isFirstMarksheet && $branch->credit < $chargeAmount) {
+                return response()->json([
+                    'error' => true,
+                    'code' => 402,
+                    'message' => 'Insufficient credit. You need ' . $chargeAmount . ' credits but have ' . $branch->credit . ' credits.',
+                    'insufficient_credit' => true,
+                    'credit' => $branch->credit,
+                    'charge' => $chargeAmount,
+                ], 402);
+            }
 
             $marks = json_decode($validated['marks'], true);
 
@@ -1076,30 +1143,36 @@ class AdminBranchControllerAPI extends Controller
                 $performance = 'Good';
             }
 
-            // $marksheetStage = $percentage < 30 ? 'pending' : $student->marksheet_stage; // Set to 'pending' if < 30%
-
             DB::table('student')
                 ->where('student_id', $validated['student_id'])
                 ->update([
-                    'marks' => json_encode($marks), 
+                    'marks' => json_encode($marks),
                     'overall_percent' => $percentage,
                     'performance' => $performance,
                     'marksheet_stage' => 'pending',
-
                     'updated_at' => now(),
                 ]);
 
-            $student =  DB::table('student')->where('student_id', $validated['student_id'])->first();
+            // Deduct credit only on first marksheet creation
+            if ($isFirstMarksheet) {
+                DB::table('branch')
+                    ->where('id', $validated['branch_id'])
+                    ->decrement('credit', $chargeAmount);
+            }
+
+            $student = DB::table('student')->where('student_id', $validated['student_id'])->first();
+            $updatedCredit = DB::table('branch')->where('id', $validated['branch_id'])->value('credit');
 
             return response()->json([
                 'error' => false,
                 'code' => 200,
                 'message' => 'Student marksheet updated successfully',
                 'data' => $student,
+                'credit_deducted' => $isFirstMarksheet ? $chargeAmount : 0,
+                'remaining_credit' => $updatedCredit,
             ], 200);
 
         } catch (\Exception $e) {
-            // Catch any other exceptions
             return response()->json([
                 'error' => true,
                 'message' => 'An unexpected error occurred',
@@ -1115,7 +1188,7 @@ class AdminBranchControllerAPI extends Controller
 
         $validator = Validator::make($request->all(), [
             'student_id' => 'required|exists:student,student_id',
-            'branch_id' => 'required|in:' . implode(',', $allowedBranchIds),
+            'branch_id' => 'required|integer',
             'certified_date' => 'required|date_format:Y-m-d',
             'marksheet_id' => 'nullable|string|unique:student,marksheet_id',
         ]);
@@ -1129,6 +1202,22 @@ class AdminBranchControllerAPI extends Controller
         }
 
         $validated = $validator->validated();
+
+        // Check if branch_id is in allowed list OR if the caller is an admin
+        $isAllowed = in_array($validated['branch_id'], $allowedBranchIds);
+        if (!$isAllowed) {
+            $branch = DB::table('branch')->where('id', $validated['branch_id'])->first();
+            if ($branch && $branch->role === 'admin') {
+                $isAllowed = true;
+            }
+        }
+
+        if (!$isAllowed) {
+            return response()->json([
+                'error' => true,
+                'message' => 'You do not have permission to update certification',
+            ], 403);
+        }
 
         try {
             // Get the student record
@@ -1150,27 +1239,23 @@ class AdminBranchControllerAPI extends Controller
                 ], 404);
             }
 
-            if (in_array($validated['branch_id'], $allowedBranchIds)) {
-                DB::table('student')
-                    ->where('student_id', $validated['student_id'])
-                    ->update([
-                        'certified_date' => Carbon::parse($validated['certified_date'])->format('Y-m-d'),
-                        'is_certificate_approve' => true,
-                        'marksheet_id' => $validated['marksheet_id'],
-                        'marksheet_stage' => 'verified',
-                        'updated_at' => now(),
-                    ]);
-                
-                $student =  DB::table('student')->where('student_id', $validated['student_id'])->first();
+            DB::table('student')
+                ->where('student_id', $validated['student_id'])
+                ->update([
+                    'certified_date' => Carbon::parse($validated['certified_date'])->format('Y-m-d'),
+                    'is_certificate_approve' => true,
+                    'marksheet_id' => $validated['marksheet_id'],
+                    'marksheet_stage' => 'verified',
+                    'updated_at' => now(),
+                ]);
 
-                return response()->json([
-                    'error' => false,
-                    'message' => 'Student certification updated successfully',
-                    'data' => $student
-                ], 200);
-            }
+            $student =  DB::table('student')->where('student_id', $validated['student_id'])->first();
 
-            return response()->json(['error' => true, 'message' => 'You do not have permission to update certification'], 403);
+            return response()->json([
+                'error' => false,
+                'message' => 'Student certification updated successfully',
+                'data' => $student
+            ], 200);
         } catch (\Exception $e) {
             return response()->json([
                 'error' => true,
@@ -1206,7 +1291,7 @@ class AdminBranchControllerAPI extends Controller
         }
     }
 
-    public function getCreditOfBranch(Request $request) //unused
+    public function getCreditOfBranch(Request $request)
     {
         $validator = Validator::make($request->all(), [
             'branch_id' => 'required|exists:branch,id',
@@ -1223,14 +1308,15 @@ class AdminBranchControllerAPI extends Controller
         $validated = $validator->validated();
 
         try {
-            $branchCredit = DB::table('branch')
+            $branch = DB::table('branch')
                 ->where('id', $validated['branch_id'])
-                ->value('credit');
+                ->select('credit', 'credit_per_certificate')
+                ->first();
 
-            if (is_null($branchCredit)) {
+            if (!$branch) {
                 return response()->json([
                     'error' => true,
-                    'message' => 'Credit not found for the specified branch.',
+                    'message' => 'Branch not found.',
                 ], 404);
             }
 
@@ -1239,7 +1325,8 @@ class AdminBranchControllerAPI extends Controller
                 'message' => 'Branch credit retrieved successfully.',
                 'data' => [
                     'branch_id' => $validated['branch_id'],
-                    'credit' => $branchCredit,
+                    'credit' => $branch->credit,
+                    'credit_per_certificate' => $branch->credit_per_certificate ?? 200,
                 ],
             ], 200);
         } catch (\Exception $e) {
@@ -1419,7 +1506,108 @@ class AdminBranchControllerAPI extends Controller
         }
         return '**** **** **** ' . substr($aadhaar, -4);
     }
-    
-    
+
+    // ==================== SUPER ADMIN METHODS ====================
+
+    public function verifyAdmin(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'branch_id' => 'required|exists:branch,id',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['error' => true, 'message' => 'Validation failed.'], 422);
+        }
+
+        try {
+            $branch = DB::table('branch')->where('id', $request->branch_id)->first();
+
+            if (!$branch || $branch->role !== 'admin') {
+                return response()->json([
+                    'error' => true,
+                    'message' => 'Unauthorized. Admin access required.',
+                ], 403);
+            }
+
+            return response()->json([
+                'error' => false,
+                'message' => 'Admin verified.',
+                'data' => ['role' => $branch->role, 'branch_id' => $branch->id],
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json(['error' => true, 'message' => 'Verification failed.'], 500);
+        }
+    }
+
+    public function getAllStudentsAllBranches(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'admin_branch_id' => 'required|exists:branch,id',
+            'filter_branch_id' => 'nullable|integer',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['error' => true, 'message' => 'Validation failed.'], 422);
+        }
+
+        try {
+            // Verify admin role
+            $admin = DB::table('branch')->where('id', $request->admin_branch_id)->first();
+            if (!$admin || $admin->role !== 'admin') {
+                return response()->json(['error' => true, 'message' => 'Unauthorized.'], 403);
+            }
+
+            $query = DB::table('student')
+                ->join('courses', 'student.student_course_id', '=', 'courses.course_id')
+                ->leftJoin('branch', 'student.branch_id', '=', 'branch.id')
+                ->select('student.*', 'courses.course_name', 'courses.short_form', 'branch.branch_name', 'branch.branch_code');
+
+            if ($request->filter_branch_id) {
+                $query->where('student.branch_id', $request->filter_branch_id);
+            }
+
+            $students = $query->orderByRaw('student.updated_at DESC')->get();
+
+            return response()->json([
+                'error' => false,
+                'message' => 'Students retrieved successfully.',
+                'data' => $students,
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json(['error' => true, 'message' => 'Failed to fetch students.'], 500);
+        }
+    }
+
+    public function adminSetPasswordForBranch(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'admin_branch_id' => 'required|exists:branch,id',
+            'target_branch_id' => 'required|exists:branch,id',
+            'new_password' => 'required|string|min:6',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['error' => true, 'message' => 'Validation failed.', 'errors' => $validator->errors()], 422);
+        }
+
+        try {
+            $admin = DB::table('branch')->where('id', $request->admin_branch_id)->first();
+            if (!$admin || $admin->role !== 'admin') {
+                return response()->json(['error' => true, 'message' => 'Unauthorized.'], 403);
+            }
+
+            DB::table('branch')
+                ->where('id', $request->target_branch_id)
+                ->update([
+                    'pass' => $request->new_password,
+                    'password' => EncryptionAndCompare::hash($request->new_password),
+                    'updated_at' => now(),
+                ]);
+
+            return response()->json(['error' => false, 'message' => 'Password updated successfully.'], 200);
+        } catch (\Exception $e) {
+            return response()->json(['error' => true, 'message' => 'Failed to update password.'], 500);
+        }
+    }
 
 }
