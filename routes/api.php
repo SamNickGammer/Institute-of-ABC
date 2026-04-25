@@ -4,6 +4,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\api\AdminLoginControllerAPI;
 use App\Http\Controllers\api\AdminBranchControllerAPI;
+use App\Http\Controllers\api\CertificateController;
 
 Route::post('/admin-login', [AdminLoginControllerAPI::class, 'login']);
 Route::post('/get_student_details', [AdminBranchControllerAPI::class, 'getStudentDetailsByRegistrationNumber']);
@@ -28,15 +29,19 @@ Route::prefix('admin')->name('admin.')->group(function () {
     Route::post('/branch/delete_student', [AdminBranchControllerAPI::class, 'deleteStudent']);
     Route::post('/branch/student/add_marksheet', [AdminBranchControllerAPI::class, 'updateMarksheet']);
     Route::post('/branch/student/add_certification', [AdminBranchControllerAPI::class, 'updateMarksWithCertification']);
+    Route::post('/student/secure_update_certification', [AdminBranchControllerAPI::class, 'secureUpdateStudentCertification']);
     Route::post('/branch/get_all_students', [AdminBranchControllerAPI::class, 'getStudentsByBranch']);
     Route::get('/branch/student/get_next_marksheet_no', [AdminBranchControllerAPI::class, 'getNextMarksheetId']);
     
     Route::post('/branch/add_credit', [AdminBranchControllerAPI::class, 'addCreditToBranch']);
     Route::post('/branch/get_credit', [AdminBranchControllerAPI::class, 'getCreditOfBranch']);
 
+    // Certificate & Marksheet PDF downloads
+    Route::get('/certificate/download', [CertificateController::class, 'downloadCertificate']);
+    Route::get('/marksheet/download', [CertificateController::class, 'downloadMarksheet']);
+
     // Super Admin endpoints
     Route::post('/verify-admin', [AdminBranchControllerAPI::class, 'verifyAdmin']);
     Route::post('/get_all_students_all_branches', [AdminBranchControllerAPI::class, 'getAllStudentsAllBranches']);
     Route::post('/admin/set_password', [AdminBranchControllerAPI::class, 'adminSetPasswordForBranch']);
 });
-

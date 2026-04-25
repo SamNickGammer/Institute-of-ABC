@@ -16,6 +16,7 @@ class AdminLoginControllerAPI extends Controller
         $validator = Validator::make($request->all(), [
             'branchCode' => 'required|string',
             'password' => 'required|string|min:6',
+            'portal' => 'nullable|string|in:branch,superadmin',
         ]);
 
         if ($validator->fails()) {
@@ -27,6 +28,7 @@ class AdminLoginControllerAPI extends Controller
         }
 
         $validated = $validator->validated();
+        $portal = $validated['portal'] ?? null;
 
         $isBranchAvailable = DB::table('branch')
                                 ->where(DB::raw('LOWER(branch_code)'), strtolower($validated['branchCode']))
@@ -37,6 +39,24 @@ class AdminLoginControllerAPI extends Controller
                 'error' => true,
                 'message' => 'Branch not found.',
             ], 404);
+        }
+
+        $isAdminAccount = strtolower((string) $isBranchAvailable->branch_code) === 'admin'
+            || strtolower((string) $isBranchAvailable->role) === 'admin';
+
+        if ($portal === 'superadmin' && !$isAdminAccount) {
+            return response()->json([
+                'error' => true,
+                'message' => 'Only admin can login from the superadmin portal.',
+            ], 403);
+        }
+
+        if ($portal === 'branch' && $isAdminAccount) {
+            return response()->json([
+                'error' => true,
+                'message' => 'Admin account is not allowed in branch login. Redirecting to superadmin login.',
+                'redirect_url' => '/admin-abc/login',
+            ], 403);
         }
 
         //check if branch is active or not 

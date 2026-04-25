@@ -9,12 +9,76 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 use Intervention\Image\Facades\Image;
 use Illuminate\Support\Facades\Storage;
 use Carbon\Carbon;
 
 class AdminBranchControllerAPI extends Controller
 {
+    private function getStudentWithRelationsById($studentId)
+    {
+        return DB::table('student')
+            ->join('courses', 'student.student_course_id', '=', 'courses.course_id')
+            ->leftJoin('branch', 'student.branch_id', '=', 'branch.id')
+            ->where('student.student_id', $studentId)
+            ->select(
+                'student.*',
+                'courses.course_name',
+                'courses.short_form',
+                'courses.course_duration',
+                'branch.branch_name',
+                'branch.branch_code',
+                'branch.first_name as branch_director_first',
+                'branch.last_name as branch_director_last',
+                'branch.address_line1 as branch_address'
+            )
+            ->first();
+    }
+
+    private function calculateMarksheetSummary(array $marks)
+    {
+        if (empty($marks)) {
+            throw new \InvalidArgumentException('Marks data cannot be empty.');
+        }
+
+        $totalMarks = 0;
+        $totalPossibleMarks = 0;
+
+        foreach ($marks as $subject => $mark) {
+            if (!is_numeric($mark)) {
+                throw new \InvalidArgumentException('Each mark must be numeric.');
+            }
+
+            $markValue = (float) $mark;
+
+            if ($markValue < 0 || $markValue > 100) {
+                throw new \InvalidArgumentException('Marks must be between 0 and 100.');
+            }
+
+            $marks[$subject] = $markValue;
+            $totalMarks += $markValue;
+            $totalPossibleMarks += 100;
+        }
+
+        $percentage = $totalPossibleMarks > 0 ? round(($totalMarks / $totalPossibleMarks) * 100, 2) : 0;
+
+        $performance = 'Failure';
+        if ($percentage >= 85) {
+            $performance = 'Excellent';
+        } elseif ($percentage >= 60) {
+            $performance = 'Very Good';
+        } elseif ($percentage >= 30) {
+            $performance = 'Good';
+        }
+
+        return [
+            'marks' => $marks,
+            'overall_percent' => $percentage,
+            'performance' => $performance,
+        ];
+    }
+
     public function getAllBranch(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -644,7 +708,7 @@ class AdminBranchControllerAPI extends Controller
             ], 400);
         }
 
-        return Carbon::parse($validated['admission_date'])->addMonths($courseDuration)->addDays(1)->format('Y-m-d');
+        return Carbon::parse($validated['admission_date'])->addMonths($courseDuration)->subDays(1)->format('Y-m-d');
     }
 
     public function getNextRegistrationNumber(Request $request)
@@ -1032,8 +1096,9 @@ class AdminBranchControllerAPI extends Controller
         try {
             $students = DB::table('student')
                 ->join('courses', 'student.student_course_id', '=', 'courses.course_id')
+                ->leftJoin('branch', 'student.branch_id', '=', 'branch.id')
                 ->where('student.branch_id', $data['branch_id'])
-                ->select('student.*', 'courses.course_name', 'courses.short_form')
+                ->select('student.*', 'courses.course_name', 'courses.short_form', 'courses.course_duration', 'branch.branch_name', 'branch.branch_code', 'branch.first_name as branch_director_first', 'branch.last_name as branch_director_last', 'branch.address_line1 as branch_address')
                 ->orderByRaw('CAST(SUBSTRING(student.registration_number, 7) AS UNSIGNED) DESC')
                 ->get();
 
@@ -1260,6 +1325,116 @@ class AdminBranchControllerAPI extends Controller
             return response()->json([
                 'error' => true,
                 'message' => 'Failed to update certification: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function secureUpdateStudentCertification(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'student_id' => 'required|exists:student,student_id',
+            'admin_branch_id' => 'required|exists:branch,id',
+            'password' => 'required|string|min:6',
+            'certified_date' => 'nullable|date_format:Y-m-d',
+            'marks' => 'nullable|string',
+            'marksheet_id' => [
+                'nullable',
+                'string',
+                Rule::unique('student', 'marksheet_id')->ignore($request->input('student_id'), 'student_id'),
+            ],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'error' => true,
+                'message' => 'Validation failed',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $validated = $validator->validated();
+
+        try {
+            $admin = DB::table('branch')->where('id', $validated['admin_branch_id'])->first();
+
+            if (!$admin || strtolower((string) $admin->role) !== 'admin') {
+                return response()->json([
+                    'error' => true,
+                    'message' => 'Unauthorized. Superadmin access required.',
+                ], 403);
+            }
+
+            if (!EncryptionAndCompare::compare($validated['password'], $admin->password)) {
+                return response()->json([
+                    'error' => true,
+                    'message' => 'Wrong password.',
+                ], 401);
+            }
+
+            $student = DB::table('student')->where('student_id', $validated['student_id'])->first();
+
+            if (!$student) {
+                return response()->json([
+                    'error' => true,
+                    'message' => 'Student not found.',
+                ], 404);
+            }
+
+            $updates = [
+                'updated_at' => now(),
+            ];
+
+            if ($request->has('marksheet_id')) {
+                $updates['marksheet_id'] = $validated['marksheet_id'] ?? null;
+            }
+
+            if ($request->has('certified_date')) {
+                $updates['certified_date'] = !empty($validated['certified_date'])
+                    ? Carbon::parse($validated['certified_date'])->format('Y-m-d')
+                    : null;
+            }
+
+            if ($request->has('marks') && $request->input('marks') !== null && $request->input('marks') !== '') {
+                $marks = json_decode($validated['marks'], true);
+
+                if (json_last_error() !== JSON_ERROR_NONE || !is_array($marks)) {
+                    return response()->json([
+                        'error' => true,
+                        'message' => 'Invalid marks data format.',
+                    ], 400);
+                }
+
+                $summary = $this->calculateMarksheetSummary($marks);
+
+                $updates['marks'] = json_encode($summary['marks']);
+                $updates['overall_percent'] = $summary['overall_percent'];
+                $updates['performance'] = $summary['performance'];
+            }
+
+            DB::table('student')
+                ->where('student_id', $validated['student_id'])
+                ->update($updates);
+
+            return response()->json([
+                'error' => false,
+                'message' => 'Sensitive student certification data updated successfully.',
+                'data' => $this->getStudentWithRelationsById($validated['student_id']),
+            ], 200);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'error' => true,
+                'message' => $e->getMessage(),
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error('Sensitive student certification update failed', [
+                'error' => $e->getMessage(),
+                'student_id' => $validated['student_id'] ?? null,
+                'admin_branch_id' => $validated['admin_branch_id'] ?? null,
+            ]);
+
+            return response()->json([
+                'error' => true,
+                'message' => 'Failed to update sensitive student data.',
             ], 500);
         }
     }
@@ -1560,7 +1735,7 @@ class AdminBranchControllerAPI extends Controller
             $query = DB::table('student')
                 ->join('courses', 'student.student_course_id', '=', 'courses.course_id')
                 ->leftJoin('branch', 'student.branch_id', '=', 'branch.id')
-                ->select('student.*', 'courses.course_name', 'courses.short_form', 'branch.branch_name', 'branch.branch_code');
+                ->select('student.*', 'courses.course_name', 'courses.short_form', 'courses.course_duration', 'branch.branch_name', 'branch.branch_code', 'branch.first_name as branch_director_first', 'branch.last_name as branch_director_last', 'branch.address_line1 as branch_address');
 
             if ($request->filter_branch_id) {
                 $query->where('student.branch_id', $request->filter_branch_id);

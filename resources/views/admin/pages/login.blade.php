@@ -251,7 +251,7 @@
                     'Content-Type': 'application/json',
                     'X-CSRF-TOKEN': '{{ csrf_token() }}'
                 },
-                body: JSON.stringify({ branchCode: branchId, password: password })
+                body: JSON.stringify({ branchCode: branchId, password: password, portal: 'branch' })
             })
             .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
             .then(function(res) {
@@ -265,6 +265,13 @@
                     sessionStorage.setItem('branchData', JSON.stringify({ branchData: branchData, expiryTime: expiryTime }));
                     window.location.href = '/branch';
                 } else {
+                    if (res.data && res.data.redirect_url) {
+                        toastr.info(res.data.message || 'Redirecting...');
+                        setTimeout(function() {
+                            window.location.href = res.data.redirect_url;
+                        }, 500);
+                        return;
+                    }
                     toastr.error(res.data.message || 'Login failed.');
                 }
             })
@@ -276,6 +283,15 @@
         }
 
         function checkSessionExpiration() {
+            var adminSession = sessionStorage.getItem('adminData');
+            if (adminSession) {
+                var parsedAdmin = JSON.parse(adminSession);
+                if (Date.now() <= parsedAdmin.expiryTime && parsedAdmin.adminData && parsedAdmin.adminData.role === 'admin') {
+                    window.location.href = '/admin-abc';
+                    return;
+                }
+            }
+
             var sessionData = sessionStorage.getItem('branchData');
             if (sessionData) {
                 var parsed = JSON.parse(sessionData);

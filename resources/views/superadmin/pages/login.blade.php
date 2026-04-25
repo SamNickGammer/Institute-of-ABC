@@ -127,7 +127,7 @@
                         'Content-Type': 'application/json',
                         'X-CSRF-TOKEN': '{{ csrf_token() }}'
                     },
-                    body: JSON.stringify({ branchCode: adminId, password: password })
+                    body: JSON.stringify({ branchCode: adminId, password: password, portal: 'superadmin' })
                 });
 
                 var result = await response.json();
