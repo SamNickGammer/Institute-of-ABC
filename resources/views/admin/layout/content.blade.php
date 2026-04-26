@@ -90,6 +90,10 @@
     .admin-sidebar::-webkit-scrollbar {
         width: 0;
     }
+
+    .pt10{
+        padding-top: 10px
+    }
 </style>
 
 <body class="font-HellixR" style="background: #f5f6f8; margin: 0;">

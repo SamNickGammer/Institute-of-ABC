@@ -16,6 +16,17 @@ use Carbon\Carbon;
 
 class AdminBranchControllerAPI extends Controller
 {
+    private function getAdminBranchById($adminBranchId)
+    {
+        $admin = DB::table('branch')->where('id', $adminBranchId)->first();
+
+        if (!$admin || strtolower((string) $admin->role) !== 'admin') {
+            return null;
+        }
+
+        return $admin;
+    }
+
     private function getStudentWithRelationsById($studentId)
     {
         return DB::table('student')
@@ -34,6 +45,24 @@ class AdminBranchControllerAPI extends Controller
                 'branch.address_line1 as branch_address'
             )
             ->first();
+    }
+
+    private function getStudentsWithRelationsQuery()
+    {
+        return DB::table('student')
+            ->join('courses', 'student.student_course_id', '=', 'courses.course_id')
+            ->leftJoin('branch', 'student.branch_id', '=', 'branch.id')
+            ->select(
+                'student.*',
+                'courses.course_name',
+                'courses.short_form',
+                'courses.course_duration',
+                'branch.branch_name',
+                'branch.branch_code',
+                'branch.first_name as branch_director_first',
+                'branch.last_name as branch_director_last',
+                'branch.address_line1 as branch_address'
+            );
     }
 
     private function calculateMarksheetSummary(array $marks)
@@ -1081,6 +1110,10 @@ class AdminBranchControllerAPI extends Controller
     {
         $validator = Validator::make($request->all(), [
             'branch_id' => 'required|exists:branch,id',
+            'search' => 'nullable|string|max:255',
+            'status' => 'nullable|string|in:all,no_cert,pending,verified,certified,active,inactive',
+            'page' => 'nullable|integer|min:1',
+            'per_page' => 'nullable|integer|min:1|max:5000',
         ]);
 
         if ($validator->fails()) {
@@ -1094,13 +1127,75 @@ class AdminBranchControllerAPI extends Controller
         $data = $validator->validated();
 
         try {
-            $students = DB::table('student')
-                ->join('courses', 'student.student_course_id', '=', 'courses.course_id')
-                ->leftJoin('branch', 'student.branch_id', '=', 'branch.id')
-                ->where('student.branch_id', $data['branch_id'])
-                ->select('student.*', 'courses.course_name', 'courses.short_form', 'courses.course_duration', 'branch.branch_name', 'branch.branch_code', 'branch.first_name as branch_director_first', 'branch.last_name as branch_director_last', 'branch.address_line1 as branch_address')
-                ->orderByRaw('CAST(SUBSTRING(student.registration_number, 7) AS UNSIGNED) DESC')
-                ->get();
+            $query = $this->getStudentsWithRelationsQuery()
+                ->where('student.branch_id', $data['branch_id']);
+
+            $search = trim((string) ($data['search'] ?? ''));
+            $status = $data['status'] ?? 'all';
+            $shouldPaginate = $request->has('page') || $request->has('per_page') || $request->has('search') || $request->has('status');
+
+            if ($search !== '') {
+                $query->where(function ($innerQuery) use ($search) {
+                    $innerQuery
+                        ->where('student.student_name', 'like', '%' . $search . '%')
+                        ->orWhere('student.student_father_name', 'like', '%' . $search . '%')
+                        ->orWhere('student.student_mother_name', 'like', '%' . $search . '%')
+                        ->orWhere('student.registration_number', 'like', '%' . $search . '%')
+                        ->orWhere('student.student_phone', 'like', '%' . $search . '%')
+                        ->orWhere('courses.course_name', 'like', '%' . $search . '%')
+                        ->orWhere('courses.short_form', 'like', '%' . $search . '%');
+                });
+            }
+
+            switch ($status) {
+                case 'no_cert':
+                    $query->where(function ($innerQuery) {
+                        $innerQuery
+                            ->where('student.is_certificate_approve', '!=', 1)
+                            ->orWhereNull('student.is_certificate_approve');
+                    })->whereNull('student.certified_date');
+                    break;
+                case 'pending':
+                    $query->where('student.marksheet_stage', 'pending');
+                    break;
+                case 'verified':
+                    $query->where('student.marksheet_stage', 'verified');
+                    break;
+                case 'certified':
+                    $query->where('student.is_certificate_approve', 1);
+                    break;
+                case 'active':
+                    $query->where('student.is_student_active', 1);
+                    break;
+                case 'inactive':
+                    $query->where('student.is_student_active', 0);
+                    break;
+            }
+
+            $query->orderByDesc('student.updated_at');
+
+            if ($shouldPaginate) {
+                $perPage = (int) ($data['per_page'] ?? 20);
+                $page = (int) ($data['page'] ?? 1);
+                $students = $query->paginate($perPage, ['*'], 'page', $page);
+
+                return response()->json([
+                    'error' => false,
+                    "message" => 'Provided Successfully',
+                    'code' => 200,
+                    'data' => $students->items(),
+                    'pagination' => [
+                        'current_page' => $students->currentPage(),
+                        'last_page' => $students->lastPage(),
+                        'per_page' => $students->perPage(),
+                        'total' => $students->total(),
+                        'from' => $students->firstItem(),
+                        'to' => $students->lastItem(),
+                    ],
+                ], 200);
+            }
+
+            $students = $query->get();
 
             return response()->json([
                 'error' => false,
@@ -1110,11 +1205,69 @@ class AdminBranchControllerAPI extends Controller
             ], 200);
 
         } catch (\Exception $e) {
+            Log::error('Failed to fetch students by branch', [
+                'error' => $e->getMessage(),
+                'branch_id' => $data['branch_id'] ?? null,
+            ]);
+
             return response()->json([
                 'error' => true,
                 'code' => 500,
                 'message' => 'Internal server error',
                 'data' => [],
+            ], 500);
+        }
+    }
+
+    public function getStudentByIdForBranch(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'branch_id' => 'required|exists:branch,id',
+            'student_id' => 'required|exists:student,student_id',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'error' => true,
+                'message' => 'Validation failed',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $validated = $validator->validated();
+
+        try {
+            $student = $this->getStudentWithRelationsById($validated['student_id']);
+
+            if (!$student) {
+                return response()->json([
+                    'error' => true,
+                    'message' => 'Student not found',
+                ], 404);
+            }
+
+            if ((int) $student->branch_id !== (int) $validated['branch_id']) {
+                return response()->json([
+                    'error' => true,
+                    'message' => 'Unauthorized access to student data.',
+                ], 403);
+            }
+
+            return response()->json([
+                'error' => false,
+                'message' => 'Student retrieved successfully',
+                'data' => $student,
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('Failed to fetch student by id for branch', [
+                'error' => $e->getMessage(),
+                'student_id' => $validated['student_id'],
+                'branch_id' => $validated['branch_id'],
+            ]);
+
+            return response()->json([
+                'error' => true,
+                'message' => 'Failed to fetch student.',
             ], 500);
         }
     }
@@ -1714,11 +1867,11 @@ class AdminBranchControllerAPI extends Controller
         }
     }
 
-    public function getAllStudentsAllBranches(Request $request)
+    public function getStudentById(Request $request)
     {
         $validator = Validator::make($request->all(), [
             'admin_branch_id' => 'required|exists:branch,id',
-            'filter_branch_id' => 'nullable|integer',
+            'student_id' => 'required|exists:student,student_id',
         ]);
 
         if ($validator->fails()) {
@@ -1726,30 +1879,196 @@ class AdminBranchControllerAPI extends Controller
         }
 
         try {
-            // Verify admin role
-            $admin = DB::table('branch')->where('id', $request->admin_branch_id)->first();
-            if (!$admin || $admin->role !== 'admin') {
+            $admin = $this->getAdminBranchById($request->admin_branch_id);
+            if (!$admin) {
                 return response()->json(['error' => true, 'message' => 'Unauthorized.'], 403);
             }
 
-            $query = DB::table('student')
-                ->join('courses', 'student.student_course_id', '=', 'courses.course_id')
-                ->leftJoin('branch', 'student.branch_id', '=', 'branch.id')
-                ->select('student.*', 'courses.course_name', 'courses.short_form', 'courses.course_duration', 'branch.branch_name', 'branch.branch_code', 'branch.first_name as branch_director_first', 'branch.last_name as branch_director_last', 'branch.address_line1 as branch_address');
+            $student = $this->getStudentWithRelationsById($request->student_id);
 
-            if ($request->filter_branch_id) {
-                $query->where('student.branch_id', $request->filter_branch_id);
+            if (!$student) {
+                return response()->json(['error' => true, 'message' => 'Student not found.'], 404);
             }
 
-            $students = $query->orderByRaw('student.updated_at DESC')->get();
+            return response()->json([
+                'error' => false,
+                'message' => 'Student retrieved successfully.',
+                'data' => $student,
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('Failed to fetch student by id', [
+                'error' => $e->getMessage(),
+                'student_id' => $request->student_id,
+            ]);
+
+            return response()->json(['error' => true, 'message' => 'Failed to fetch student.'], 500);
+        }
+    }
+
+    public function getAllStudentsAllBranches(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'admin_branch_id' => 'required|exists:branch,id',
+            'filter_branch_id' => 'nullable|integer',
+            'search' => 'nullable|string|max:255',
+            'status' => 'nullable|string|in:all,active,inactive,pending,verified,certified',
+            'list_type' => 'nullable|string|in:all,certificate_pending',
+            'page' => 'nullable|integer|min:1',
+            'per_page' => 'nullable|integer|min:1|max:5000',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['error' => true, 'message' => 'Validation failed.'], 422);
+        }
+
+        try {
+            $admin = $this->getAdminBranchById($request->admin_branch_id);
+            if (!$admin) {
+                return response()->json(['error' => true, 'message' => 'Unauthorized.'], 403);
+            }
+
+            $validated = $validator->validated();
+            $perPage = (int) ($validated['per_page'] ?? 20);
+            $page = (int) ($validated['page'] ?? 1);
+            $status = $validated['status'] ?? 'all';
+            $listType = $validated['list_type'] ?? 'all';
+            $search = trim((string) ($validated['search'] ?? ''));
+
+            $query = $this->getStudentsWithRelationsQuery();
+
+            if (!empty($validated['filter_branch_id'])) {
+                $query->where('student.branch_id', $validated['filter_branch_id']);
+            }
+
+            if ($search !== '') {
+                $query->where(function ($innerQuery) use ($search) {
+                    $innerQuery
+                        ->where('student.student_name', 'like', '%' . $search . '%')
+                        ->orWhere('student.student_father_name', 'like', '%' . $search . '%')
+                        ->orWhere('student.student_mother_name', 'like', '%' . $search . '%')
+                        ->orWhere('student.registration_number', 'like', '%' . $search . '%')
+                        ->orWhere('student.student_phone', 'like', '%' . $search . '%')
+                        ->orWhere('branch.branch_name', 'like', '%' . $search . '%')
+                        ->orWhere('branch.branch_code', 'like', '%' . $search . '%');
+                });
+            }
+
+            if ($listType === 'certificate_pending') {
+                $query->where('student.marksheet_stage', 'pending')
+                    ->whereNotNull('student.marks');
+            }
+
+            switch ($status) {
+                case 'active':
+                    $query->where('student.is_student_active', 1);
+                    break;
+                case 'inactive':
+                    $query->where('student.is_student_active', 0);
+                    break;
+                case 'pending':
+                    $query->where('student.marksheet_stage', 'pending');
+                    break;
+                case 'verified':
+                    $query->where('student.marksheet_stage', 'verified');
+                    break;
+                case 'certified':
+                    $query->where('student.is_certificate_approve', 1);
+                    break;
+            }
+
+            $students = $query
+                ->orderByDesc('student.updated_at')
+                ->paginate($perPage, ['*'], 'page', $page);
 
             return response()->json([
                 'error' => false,
                 'message' => 'Students retrieved successfully.',
-                'data' => $students,
+                'data' => $students->items(),
+                'pagination' => [
+                    'current_page' => $students->currentPage(),
+                    'last_page' => $students->lastPage(),
+                    'per_page' => $students->perPage(),
+                    'total' => $students->total(),
+                    'from' => $students->firstItem(),
+                    'to' => $students->lastItem(),
+                ],
             ], 200);
         } catch (\Exception $e) {
+            Log::error('Failed to fetch students across branches', [
+                'error' => $e->getMessage(),
+                'admin_branch_id' => $request->admin_branch_id,
+            ]);
+
             return response()->json(['error' => true, 'message' => 'Failed to fetch students.'], 500);
+        }
+    }
+
+    public function getSuperadminDashboardSummary(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'admin_branch_id' => 'required|exists:branch,id',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['error' => true, 'message' => 'Validation failed.'], 422);
+        }
+
+        try {
+            $admin = $this->getAdminBranchById($request->admin_branch_id);
+            if (!$admin) {
+                return response()->json(['error' => true, 'message' => 'Unauthorized.'], 403);
+            }
+
+            $studentStats = DB::table('student')
+                ->selectRaw('COUNT(*) as total_students')
+                ->selectRaw("SUM(CASE WHEN marksheet_stage = 'pending' THEN 1 ELSE 0 END) as pending_students")
+                ->selectRaw("SUM(CASE WHEN is_certificate_approve = 1 THEN 1 ELSE 0 END) as certified_students")
+                ->first();
+
+            $recentStudents = $this->getStudentsWithRelationsQuery()
+                ->orderByDesc('student.updated_at')
+                ->limit(8)
+                ->get();
+
+            $branches = DB::table('branch')
+                ->select(
+                    'id',
+                    'branch_code',
+                    'branch_name',
+                    'city',
+                    'state',
+                    'credit',
+                    'active',
+                    'role'
+                )
+                ->where('role', '!=', 'admin')
+                ->orderByDesc('updated_at')
+                ->get();
+
+            $coursesCount = DB::table('courses')->count();
+
+            return response()->json([
+                'error' => false,
+                'message' => 'Dashboard summary retrieved successfully.',
+                'data' => [
+                    'stats' => [
+                        'total_students' => (int) ($studentStats->total_students ?? 0),
+                        'pending_students' => (int) ($studentStats->pending_students ?? 0),
+                        'certified_students' => (int) ($studentStats->certified_students ?? 0),
+                        'total_branches' => $branches->count(),
+                        'total_courses' => (int) $coursesCount,
+                    ],
+                    'recent_students' => $recentStudents,
+                    'branches' => $branches,
+                ],
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('Failed to fetch superadmin dashboard summary', [
+                'error' => $e->getMessage(),
+                'admin_branch_id' => $request->admin_branch_id,
+            ]);
+
+            return response()->json(['error' => true, 'message' => 'Failed to fetch dashboard summary.'], 500);
         }
     }
 

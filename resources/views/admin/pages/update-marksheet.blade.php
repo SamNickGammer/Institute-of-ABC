@@ -307,11 +307,14 @@ document.addEventListener('DOMContentLoaded', function() {
         return;
     }
 
-    // Fetch students, courses, and credit info in parallel
-    var studentsPromise = fetch(API_URL + '/admin/branch/get_all_students', {
+    // Fetch the student, courses, and credit info in parallel
+    var studentPromise = fetch(API_URL + '/admin/branch/student/get_by_id', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ branch_id: session.branchData.branch_id })
+        body: JSON.stringify({
+            branch_id: session.branchData.branch_id,
+            student_id: studentId
+        })
     }).then(function(r) { return r.json(); });
 
     var coursesPromise = fetch(API_URL + '/admin/branch/get_all_courses?showActiveOnly=false', {
@@ -325,24 +328,20 @@ document.addEventListener('DOMContentLoaded', function() {
         body: JSON.stringify({ branch_id: session.branchData.branch_id })
     }).then(function(r) { return r.json(); });
 
-    Promise.all([studentsPromise, coursesPromise, creditPromise])
+    Promise.all([studentPromise, coursesPromise, creditPromise])
     .then(function(results) {
         document.getElementById('msLoading').style.display = 'none';
 
-        var studentsResult = results[0];
+        var studentResult = results[0];
         var coursesResult = results[1];
         var creditResult = results[2];
 
-        if (studentsResult.error || !studentsResult.data) {
+        if (studentResult.error || !studentResult.data) {
             document.getElementById('msNotFound').classList.remove('hidden');
             return;
         }
 
-        var s = studentsResult.data.find(function(st) { return st.student_id == studentId; });
-        if (!s) {
-            document.getElementById('msNotFound').classList.remove('hidden');
-            return;
-        }
+        var s = studentResult.data;
 
         if (s.marksheet_stage === 'verified' || s.is_certificate_approve) {
             document.getElementById('msNotFound').innerHTML =

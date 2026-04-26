@@ -353,10 +353,13 @@ document.addEventListener('DOMContentLoaded', function() {
         return;
     }
 
-    fetch(API_URL + '/admin/branch/get_all_students', {
+    fetch(API_URL + '/admin/branch/student/get_by_id', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ branch_id: session.branchData.branch_id })
+        body: JSON.stringify({
+            branch_id: session.branchData.branch_id,
+            student_id: studentId
+        })
     })
     .then(function(r) { return r.json(); })
     .then(function(result) {
@@ -367,14 +370,7 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
-        var s = result.data.find(function(st) { return st.student_id == studentId; });
-
-        if (!s) {
-            document.getElementById('detailNotFound').classList.remove('hidden');
-            return;
-        }
-
-        populateDetail(s);
+        populateDetail(result.data);
         document.getElementById('detailContent').classList.remove('hidden');
     })
     .catch(function() {

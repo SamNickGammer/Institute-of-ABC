@@ -333,10 +333,13 @@ function saEditLoadCourses(callback) {
 }
 
 function saEditLoadStudent(session, studentId) {
-    fetch(API_URL + '/admin/get_all_students_all_branches', {
+    fetch(API_URL + '/admin/student/get_by_id', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ admin_branch_id: session.adminData.branch_id })
+        body: JSON.stringify({
+            admin_branch_id: session.adminData.branch_id,
+            student_id: studentId
+        })
     })
     .then(function(r) { return r.json(); })
     .then(function(result) {
@@ -345,11 +348,7 @@ function saEditLoadStudent(session, studentId) {
             document.getElementById('saEditNotFound').classList.remove('hidden');
             return;
         }
-        saEditStudent = result.data.find(function(st) { return st.student_id == studentId; });
-        if (!saEditStudent) {
-            document.getElementById('saEditNotFound').classList.remove('hidden');
-            return;
-        }
+        saEditStudent = result.data;
         saPopulateEditForm(saEditStudent);
         document.getElementById('saEditContent').classList.remove('hidden');
     })

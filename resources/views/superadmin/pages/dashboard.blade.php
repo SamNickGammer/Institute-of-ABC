@@ -201,8 +201,7 @@ document.addEventListener('DOMContentLoaded', function() {
 function loadDashboardData(session) {
     var adminId = session.adminData.branch_id;
 
-    // Fetch all students
-    fetch(API_URL + '/admin/get_all_students_all_branches', {
+    fetch(API_URL + '/admin/dashboard/summary', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ admin_branch_id: adminId })
@@ -212,45 +211,23 @@ function loadDashboardData(session) {
         document.getElementById('saLoading').style.display = 'none';
         document.getElementById('saContent').classList.remove('hidden');
 
-        var students = (result.error || !result.data) ? [] : result.data;
+        var data = (result.error || !result.data) ? null : result.data;
+        var stats = data ? data.stats : null;
+        var recentStudents = data ? (data.recent_students || []) : [];
+        var branches = data ? (data.branches || []) : [];
 
-        var pending = 0, certified = 0;
-        students.forEach(function(s) {
-            if (s.marksheet_stage === 'pending') pending++;
-            if (s.is_certificate_approve) certified++;
-        });
+        saAnimateNum('saTotalStudents', stats ? stats.total_students : 0);
+        saAnimateNum('saPending', stats ? stats.pending_students : 0);
+        saAnimateNum('saCertified', stats ? stats.certified_students : 0);
+        saAnimateNum('saTotalBranches', stats ? stats.total_branches : 0);
+        saAnimateNum('saTotalCourses', stats ? stats.total_courses : 0);
 
-        saAnimateNum('saTotalStudents', students.length);
-        saAnimateNum('saPending', pending);
-        saAnimateNum('saCertified', certified);
-
-        renderSaRecent(students);
+        renderSaRecent(recentStudents);
+        renderBranchOverview(branches);
     })
     .catch(function() {
         document.getElementById('saLoading').style.display = 'none';
         document.getElementById('saContent').classList.remove('hidden');
-    });
-
-    // Fetch branches
-    fetch(API_URL + '/admin/branch/getAll', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ admin_branch_id: adminId })
-    })
-    .then(function(r) { return r.json(); })
-    .then(function(result) {
-        var branches = (result.error || !result.data) ? [] : result.data;
-        var branchOnly = branches.filter(function(b) { return b.role !== 'admin'; });
-        saAnimateNum('saTotalBranches', branchOnly.length);
-        renderBranchOverview(branchOnly);
-    });
-
-    // Fetch courses
-    fetch(API_URL + '/admin/branch/get_all_courses')
-    .then(function(r) { return r.json(); })
-    .then(function(result) {
-        var courses = (result.error || !result.data) ? [] : result.data;
-        saAnimateNum('saTotalCourses', courses.length);
     });
 }
 

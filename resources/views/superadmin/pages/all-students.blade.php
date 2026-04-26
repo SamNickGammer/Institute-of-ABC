@@ -23,6 +23,15 @@
     .sa-stu-badge {
         display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 11px;
     }
+    .sa-stu-pagination {
+        display: flex; align-items: center; justify-content: space-between;
+        gap: 12px; padding-top: 18px; flex-wrap: wrap;
+    }
+    .sa-stu-page-btn {
+        border: 1px solid #e5e7eb; background: #fff; color: #111;
+        border-radius: 10px; padding: 9px 14px; font-size: 12px; cursor: pointer;
+    }
+    .sa-stu-page-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 </style>
 
 <div class="sa-students-card">
@@ -34,7 +43,7 @@
     </div>
 
     <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;align-items:center;">
-        <input type="text" id="saSearch" class="sa-stu-input font-HellixR" placeholder="Search by name, reg no, phone..." style="width:300px;">
+        <input type="text" id="saSearch" class="sa-stu-input font-HellixR" placeholder="Search by name, parents, reg no, phone..." style="width:300px;">
         <select id="saBranchFilter" class="sa-stu-select font-HellixR">
             <option value="all">All Branches</option>
         </select>
@@ -73,22 +82,45 @@
             </thead>
             <tbody id="saStudentsBody"></tbody>
         </table>
+        <div id="saStudentsPagination" class="sa-stu-pagination hidden">
+            <div id="saStudentsPageInfo" class="font-HellixR" style="font-size:12px;color:#6b7280;"></div>
+            <div style="display:flex;gap:10px;">
+                <button id="saPrevPageBtn" type="button" class="sa-stu-page-btn font-HellixB">Previous</button>
+                <button id="saNextPageBtn" type="button" class="sa-stu-page-btn font-HellixB">Next</button>
+            </div>
+        </div>
     </div>
 </div>
 
 <script>
-var saAllStudents = [];
 var saBranches = [];
+var saStudentPagination = null;
+var saStudentSearchTimer = null;
 
 document.addEventListener('DOMContentLoaded', function() {
     verifyAdminAccess(function(session) {
         loadBranches();
-        loadAllStudents(session);
+        loadAllStudents(session, 1);
     });
 
-    document.getElementById('saSearch').addEventListener('input', saApplyFilters);
-    document.getElementById('saBranchFilter').addEventListener('change', saApplyFilters);
-    document.getElementById('saStatusFilter').addEventListener('change', saApplyFilters);
+    document.getElementById('saSearch').addEventListener('input', function() {
+        clearTimeout(saStudentSearchTimer);
+        saStudentSearchTimer = setTimeout(function() {
+            saLoadStudentsForCurrentFilters(1);
+        }, 300);
+    });
+    document.getElementById('saBranchFilter').addEventListener('change', function() { saLoadStudentsForCurrentFilters(1); });
+    document.getElementById('saStatusFilter').addEventListener('change', function() { saLoadStudentsForCurrentFilters(1); });
+    document.getElementById('saPrevPageBtn').addEventListener('click', function() {
+        if (saStudentPagination && saStudentPagination.current_page > 1) {
+            saLoadStudentsForCurrentFilters(saStudentPagination.current_page - 1);
+        }
+    });
+    document.getElementById('saNextPageBtn').addEventListener('click', function() {
+        if (saStudentPagination && saStudentPagination.current_page < saStudentPagination.last_page) {
+            saLoadStudentsForCurrentFilters(saStudentPagination.current_page + 1);
+        }
+    });
 });
 
 function loadBranches() {
@@ -114,63 +146,61 @@ function loadBranches() {
     });
 }
 
-function loadAllStudents(session) {
+function saLoadStudentsForCurrentFilters(page) {
+    var session = getAdminData();
+    if (!session) return;
+    loadAllStudents(session, page || 1);
+}
+
+function loadAllStudents(session, page) {
+    document.getElementById('saStudentsLoading').style.display = 'flex';
+    document.getElementById('saNoStudents').classList.add('hidden');
+    document.getElementById('saTableWrapper').classList.add('hidden');
+
+    var branchFilter = document.getElementById('saBranchFilter').value;
+    var statusFilter = document.getElementById('saStatusFilter').value;
+    var query = document.getElementById('saSearch').value.trim();
+
     fetch(API_URL + '/admin/get_all_students_all_branches', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ admin_branch_id: session.adminData.branch_id })
+        body: JSON.stringify({
+            admin_branch_id: session.adminData.branch_id,
+            page: page || 1,
+            per_page: 20,
+            search: query || null,
+            filter_branch_id: branchFilter !== 'all' ? parseInt(branchFilter, 10) : null,
+            status: statusFilter || 'all'
+        })
     })
     .then(function(r) { return r.json(); })
     .then(function(result) {
         document.getElementById('saStudentsLoading').style.display = 'none';
         if (result.error || !result.data || result.data.length === 0) {
+            saStudentPagination = result.pagination || null;
+            document.getElementById('saStudentCount').textContent = saStudentPagination ? saStudentPagination.total : 0;
+            document.getElementById('saStudentsPagination').classList.add('hidden');
             document.getElementById('saNoStudents').classList.remove('hidden');
             return;
         }
-        saAllStudents = result.data;
-        saApplyFilters();
+        saStudentPagination = result.pagination || null;
+        renderSaStudents(result.data);
     })
     .catch(function() {
         document.getElementById('saStudentsLoading').innerHTML = '<p style="color:#dc2626;">Failed to load students.</p>';
     });
 }
 
-function saApplyFilters() {
-    var query = document.getElementById('saSearch').value.toLowerCase();
-    var branchFilter = document.getElementById('saBranchFilter').value;
-    var statusFilter = document.getElementById('saStatusFilter').value;
-
-    var filtered = saAllStudents.filter(function(s) {
-        if (query) {
-            var match = (s.student_name || '').toLowerCase().indexOf(query) !== -1 ||
-                (s.registration_number || '').toLowerCase().indexOf(query) !== -1 ||
-                (s.student_phone || '').toLowerCase().indexOf(query) !== -1 ||
-                (s.student_father_name || '').toLowerCase().indexOf(query) !== -1 ||
-                (s.branch_name || '').toLowerCase().indexOf(query) !== -1;
-            if (!match) return false;
-        }
-        if (branchFilter !== 'all' && s.branch_id != branchFilter) return false;
-        switch (statusFilter) {
-            case 'active': return s.is_student_active == 1;
-            case 'inactive': return s.is_student_active == 0;
-            case 'pending': return s.marksheet_stage === 'pending';
-            case 'verified': return s.marksheet_stage === 'verified';
-            case 'certified': return s.is_certificate_approve == 1;
-            default: return true;
-        }
-    });
-
-    renderSaStudents(filtered);
-}
-
 function renderSaStudents(students) {
     var wrapper = document.getElementById('saTableWrapper');
     var noEl = document.getElementById('saNoStudents');
-    document.getElementById('saStudentCount').textContent = students.length;
+    var total = saStudentPagination ? saStudentPagination.total : students.length;
+    document.getElementById('saStudentCount').textContent = total;
 
     if (students.length === 0) {
         wrapper.classList.add('hidden');
         noEl.classList.remove('hidden');
+        document.getElementById('saStudentsPagination').classList.add('hidden');
         return;
     }
 
@@ -197,6 +227,23 @@ function renderSaStudents(students) {
             '<td><span class="sa-stu-badge font-HellixB" style="' + statusStyle + '">' + statusText + '</span></td>' +
         '</tr>';
     }).join('');
+
+    saRenderPagination();
+}
+
+function saRenderPagination() {
+    var paginationEl = document.getElementById('saStudentsPagination');
+    var infoEl = document.getElementById('saStudentsPageInfo');
+
+    if (!saStudentPagination || saStudentPagination.last_page <= 1) {
+        paginationEl.classList.add('hidden');
+        return;
+    }
+
+    paginationEl.classList.remove('hidden');
+    infoEl.textContent = 'Showing ' + (saStudentPagination.from || 0) + '-' + (saStudentPagination.to || 0) + ' of ' + saStudentPagination.total + ' students';
+    document.getElementById('saPrevPageBtn').disabled = saStudentPagination.current_page <= 1;
+    document.getElementById('saNextPageBtn').disabled = saStudentPagination.current_page >= saStudentPagination.last_page;
 }
 
 function saEsc(text) {

@@ -329,7 +329,11 @@ function loadBranchStudents(session, branchId) {
     fetch(API_URL + '/admin/get_all_students_all_branches', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ admin_branch_id: session.adminData.branch_id, filter_branch_id: parseInt(branchId) })
+        body: JSON.stringify({
+            admin_branch_id: session.adminData.branch_id,
+            filter_branch_id: parseInt(branchId, 10),
+            per_page: 5000
+        })
     })
     .then(function(r) { return r.json(); })
     .then(function(result) {

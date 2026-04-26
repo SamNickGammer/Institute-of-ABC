@@ -221,10 +221,13 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
-        fetch(API_URL + '/admin/get_all_students_all_branches', {
+        fetch(API_URL + '/admin/student/get_by_id', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ admin_branch_id: session.adminData.branch_id })
+            body: JSON.stringify({
+                admin_branch_id: session.adminData.branch_id,
+                student_id: studentId
+            })
         })
         .then(function(r) { return r.json(); })
         .then(function(result) {
@@ -233,12 +236,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 document.getElementById('saDetNotFound').classList.remove('hidden');
                 return;
             }
-            var s = result.data.find(function(st) { return st.student_id == studentId; });
-            if (!s) {
-                document.getElementById('saDetNotFound').classList.remove('hidden');
-                return;
-            }
-            populateSaDetail(s);
+            populateSaDetail(result.data);
             document.getElementById('saDetContent').classList.remove('hidden');
         })
         .catch(function() {

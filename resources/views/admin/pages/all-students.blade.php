@@ -37,7 +37,7 @@
                 </div>
             </div>
 
-            <div class="ml-auto text-sm text-gray-500 font-HellixR">
+        <div class="ml-auto text-sm text-gray-500 font-HellixR">
                 <span id="studentCount" class="font-HellixB">0</span> students
             </div>
         </div>
@@ -61,6 +61,13 @@
                         <thead class="bg-gray-50 border-b" id="tableHead"></thead>
                         <tbody id="studentsTableBody"></tbody>
                     </table>
+                </div>
+            </div>
+            <div id="studentsPagination" class="flex items-center justify-between gap-3 mt-4 flex-wrap pt10">
+                <div id="studentsPageInfo" class="text-sm text-gray-500 font-HellixR"></div>
+                <div class="flex items-center gap-2">
+                    <button id="prevPageBtn" type="button" class="border border-gray-300 bg-white text-black px-4 py-2 rounded-lg text-sm font-HellixB disabled:opacity-40 disabled:cursor-not-allowed">Previous</button>
+                    <button id="nextPageBtn" type="button" class="border border-gray-300 bg-white text-black px-4 py-2 rounded-lg text-sm font-HellixB disabled:opacity-40 disabled:cursor-not-allowed">Next</button>
                 </div>
             </div>
         </div>
@@ -105,8 +112,9 @@
 </style>
 
 <script>
-var allStudents = [];
-var filteredStudents = [];
+var currentStudents = [];
+var studentPagination = null;
+var studentSearchTimer = null;
 
 var ALL_COLUMNS = [
     { key: 'registration_number', label: 'Reg No', default: true, sticky: true },
@@ -164,7 +172,7 @@ function buildColumnCheckboxes() {
                 activeColumns = activeColumns.filter(function(k) { return k !== key; });
             }
             saveColumnPrefs();
-            renderStudents(filteredStudents);
+            renderStudents(currentStudents);
         });
     });
 }
@@ -193,17 +201,19 @@ function renderStudents(students) {
     var tbody = document.getElementById('studentsTableBody');
     var wrapper = document.getElementById('studentsTableWrapper');
     var noEl = document.getElementById('noStudents');
+    var totalStudents = studentPagination ? studentPagination.total : students.length;
 
     if (students.length === 0) {
         wrapper.classList.add('hidden');
         noEl.classList.remove('hidden');
-        document.getElementById('studentCount').textContent = '0';
+        document.getElementById('studentCount').textContent = totalStudents;
+        document.getElementById('studentsPagination').classList.add('hidden');
         return;
     }
 
     noEl.classList.add('hidden');
     wrapper.classList.remove('hidden');
-    document.getElementById('studentCount').textContent = students.length;
+    document.getElementById('studentCount').textContent = totalStudents;
 
     var visibleCols = ALL_COLUMNS.filter(function(c) { return activeColumns.indexOf(c.key) !== -1; });
 
@@ -252,37 +262,8 @@ function renderStudents(students) {
             '</td>' +
         '</tr>';
     }).join('');
-}
 
-function applyFilters() {
-    var query = document.getElementById('searchInput').value.toLowerCase();
-    var filter = document.getElementById('certFilter').value;
-
-    filteredStudents = allStudents.filter(function(s) {
-        // Search filter
-        if (query) {
-            var match = (s.student_name || '').toLowerCase().indexOf(query) !== -1 ||
-                (s.registration_number || '').toLowerCase().indexOf(query) !== -1 ||
-                (s.student_phone || '').toLowerCase().indexOf(query) !== -1 ||
-                (s.student_father_name || '').toLowerCase().indexOf(query) !== -1 ||
-                (s.course_name || '').toLowerCase().indexOf(query) !== -1 ||
-                (s.short_form || '').toLowerCase().indexOf(query) !== -1;
-            if (!match) return false;
-        }
-
-        // Status filter
-        switch (filter) {
-            case 'no_cert': return !s.is_certificate_approve && !s.certified_date;
-            case 'pending': return s.marksheet_stage === 'pending';
-            case 'verified': return s.marksheet_stage === 'verified';
-            case 'certified': return s.is_certificate_approve == 1;
-            case 'active': return s.is_student_active == 1;
-            case 'inactive': return s.is_student_active == 0;
-            default: return true;
-        }
-    });
-
-    renderStudents(filteredStudents);
+    renderPagination();
 }
 
 function escapeHtml(text) {
@@ -290,6 +271,70 @@ function escapeHtml(text) {
     var div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+function renderPagination() {
+    var paginationEl = document.getElementById('studentsPagination');
+    var infoEl = document.getElementById('studentsPageInfo');
+
+    if (!studentPagination || studentPagination.last_page <= 1) {
+        paginationEl.classList.add('hidden');
+        return;
+    }
+
+    paginationEl.classList.remove('hidden');
+    infoEl.textContent = 'Showing ' + (studentPagination.from || 0) + '-' + (studentPagination.to || 0) + ' of ' + studentPagination.total + ' students';
+    document.getElementById('prevPageBtn').disabled = studentPagination.current_page <= 1;
+    document.getElementById('nextPageBtn').disabled = studentPagination.current_page >= studentPagination.last_page;
+}
+
+function loadStudentsPage(page) {
+    var session = getBranchData();
+    if (!session) return;
+
+    document.getElementById('studentsLoading').style.display = 'flex';
+    document.getElementById('noStudents').classList.add('hidden');
+    document.getElementById('studentsTableWrapper').classList.add('hidden');
+
+    fetch(API_URL + '/admin/branch/get_all_students', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            branch_id: session.branchData.branch_id,
+            page: page || 1,
+            per_page: 20,
+            search: document.getElementById('searchInput').value.trim() || null,
+            status: document.getElementById('certFilter').value || 'all'
+        })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(result) {
+        document.getElementById('studentsLoading').style.display = 'none';
+
+        if (result.error || !result.data) {
+            studentPagination = null;
+            currentStudents = [];
+            document.getElementById('studentCount').textContent = '0';
+            document.getElementById('studentsPagination').classList.add('hidden');
+            document.getElementById('noStudents').classList.remove('hidden');
+            return;
+        }
+
+        studentPagination = result.pagination || null;
+        currentStudents = result.data || [];
+
+        if (currentStudents.length === 0) {
+            document.getElementById('studentCount').textContent = studentPagination ? studentPagination.total : 0;
+            document.getElementById('studentsPagination').classList.add('hidden');
+            document.getElementById('noStudents').classList.remove('hidden');
+            return;
+        }
+
+        renderStudents(currentStudents);
+    })
+    .catch(function() {
+        document.getElementById('studentsLoading').innerHTML = '<p class="text-red-500">Failed to load students</p>';
+    });
 }
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -310,30 +355,24 @@ document.addEventListener('DOMContentLoaded', function() {
     toggleMenu.addEventListener('click', function(e) { e.stopPropagation(); });
 
     // Search & filter
-    document.getElementById('searchInput').addEventListener('input', applyFilters);
-    document.getElementById('certFilter').addEventListener('change', applyFilters);
-
-    // Load students
-    fetch(API_URL + '/admin/branch/get_all_students', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ branch_id: session.branchData.branch_id })
-    })
-    .then(function(r) { return r.json(); })
-    .then(function(result) {
-        document.getElementById('studentsLoading').style.display = 'none';
-
-        if (result.error || !result.data || result.data.length === 0) {
-            document.getElementById('noStudents').classList.remove('hidden');
-            return;
-        }
-
-        allStudents = result.data;
-        filteredStudents = allStudents;
-        renderStudents(allStudents);
-    })
-    .catch(function() {
-        document.getElementById('studentsLoading').innerHTML = '<p class="text-red-500">Failed to load students</p>';
+    document.getElementById('searchInput').addEventListener('input', function() {
+        clearTimeout(studentSearchTimer);
+        studentSearchTimer = setTimeout(function() {
+            loadStudentsPage(1);
+        }, 300);
     });
+    document.getElementById('certFilter').addEventListener('change', function() { loadStudentsPage(1); });
+    document.getElementById('prevPageBtn').addEventListener('click', function() {
+        if (studentPagination && studentPagination.current_page > 1) {
+            loadStudentsPage(studentPagination.current_page - 1);
+        }
+    });
+    document.getElementById('nextPageBtn').addEventListener('click', function() {
+        if (studentPagination && studentPagination.current_page < studentPagination.last_page) {
+            loadStudentsPage(studentPagination.current_page + 1);
+        }
+    });
+
+    loadStudentsPage(1);
 });
 </script>

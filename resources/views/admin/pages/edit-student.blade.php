@@ -453,10 +453,13 @@ function loadEditCourses(callback) {
 }
 
 function loadStudentData(branchId, studentId) {
-    fetch(API_URL + '/admin/branch/get_all_students', {
+    fetch(API_URL + '/admin/branch/student/get_by_id', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ branch_id: branchId })
+        body: JSON.stringify({
+            branch_id: branchId,
+            student_id: studentId
+        })
     })
     .then(function(r) { return r.json(); })
     .then(function(result) {
@@ -468,14 +471,7 @@ function loadStudentData(branchId, studentId) {
             return;
         }
 
-        currentStudent = result.data.find(function(s) { return s.student_id == studentId; });
-
-        if (!currentStudent) {
-            document.getElementById('editNotFound').classList.remove('hidden');
-            toastr.error('Student not found');
-            return;
-        }
-
+        currentStudent = result.data;
         populateForm(currentStudent);
         document.getElementById('editContent').classList.remove('hidden');
     })

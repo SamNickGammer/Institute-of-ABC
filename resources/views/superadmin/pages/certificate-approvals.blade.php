@@ -35,6 +35,15 @@
         border: 1px solid #e5e7eb; border-radius: 10px; padding: 10px 14px; font-size: 13px;
         outline: none; background: #fff; cursor: pointer;
     }
+    .sa-cert-pagination {
+        display: flex; align-items: center; justify-content: space-between;
+        gap: 12px; flex-wrap: wrap; padding-top: 18px;
+    }
+    .sa-cert-page-btn {
+        border: 1px solid #e5e7eb; background: #fff; color: #111;
+        border-radius: 10px; padding: 9px 14px; font-size: 12px; cursor: pointer;
+    }
+    .sa-cert-page-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 </style>
 
 <div class="sa-cert-card">
@@ -81,6 +90,13 @@
             </thead>
             <tbody id="saCertBody"></tbody>
         </table>
+        <div id="saCertPagination" class="sa-cert-pagination hidden">
+            <div id="saCertPageInfo" class="font-HellixR" style="font-size:12px;color:#6b7280;"></div>
+            <div style="display:flex;gap:10px;">
+                <button id="saCertPrevBtn" type="button" class="sa-cert-page-btn font-HellixB">Previous</button>
+                <button id="saCertNextBtn" type="button" class="sa-cert-page-btn font-HellixB">Next</button>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -128,19 +144,35 @@
 </div>
 
 <script>
-var saAllPendingStudents = [];
-var saFilteredPending = [];
+var saCurrentPendingStudents = [];
 var saApproveTarget = null;
 var saCertBranches = [];
+var saCertPagination = null;
+var saCertSearchTimer = null;
 
 document.addEventListener('DOMContentLoaded', function() {
     verifyAdminAccess(function(session) {
         loadCertBranches(session);
-        loadPendingStudents(session);
+        loadPendingStudents(session, 1);
     });
 
-    document.getElementById('saCertBranchFilter').addEventListener('change', certApplyFilters);
-    document.getElementById('saCertSearch').addEventListener('input', certApplyFilters);
+    document.getElementById('saCertBranchFilter').addEventListener('change', function() { saLoadPendingForCurrentFilters(1); });
+    document.getElementById('saCertSearch').addEventListener('input', function() {
+        clearTimeout(saCertSearchTimer);
+        saCertSearchTimer = setTimeout(function() {
+            saLoadPendingForCurrentFilters(1);
+        }, 300);
+    });
+    document.getElementById('saCertPrevBtn').addEventListener('click', function() {
+        if (saCertPagination && saCertPagination.current_page > 1) {
+            saLoadPendingForCurrentFilters(saCertPagination.current_page - 1);
+        }
+    });
+    document.getElementById('saCertNextBtn').addEventListener('click', function() {
+        if (saCertPagination && saCertPagination.current_page < saCertPagination.last_page) {
+            saLoadPendingForCurrentFilters(saCertPagination.current_page + 1);
+        }
+    });
 });
 
 function loadCertBranches(session) {
@@ -164,61 +196,66 @@ function loadCertBranches(session) {
     });
 }
 
-function loadPendingStudents(session) {
+function saLoadPendingForCurrentFilters(page) {
+    var session = getAdminData();
+    if (!session) return;
+    loadPendingStudents(session, page || 1);
+}
+
+function loadPendingStudents(session, page) {
+    document.getElementById('saCertLoading').style.display = 'flex';
+    document.getElementById('saCertEmpty').classList.add('hidden');
+    document.getElementById('saCertTableWrapper').classList.add('hidden');
+
+    var branchFilter = document.getElementById('saCertBranchFilter').value;
+    var query = document.getElementById('saCertSearch').value.trim();
+
     fetch(API_URL + '/admin/get_all_students_all_branches', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ admin_branch_id: session.adminData.branch_id })
+        body: JSON.stringify({
+            admin_branch_id: session.adminData.branch_id,
+            list_type: 'certificate_pending',
+            page: page || 1,
+            per_page: 20,
+            search: query || null,
+            filter_branch_id: branchFilter !== 'all' ? parseInt(branchFilter, 10) : null
+        })
     })
     .then(function(r) { return r.json(); })
     .then(function(result) {
         document.getElementById('saCertLoading').style.display = 'none';
         if (result.error || !result.data) {
+            saCertPagination = null;
+            saCurrentPendingStudents = [];
+            document.getElementById('saPendingCount').textContent = '0';
+            document.getElementById('saCertPagination').classList.add('hidden');
             document.getElementById('saCertEmpty').classList.remove('hidden');
             return;
         }
 
-        saAllPendingStudents = result.data.filter(function(s) {
-            return s.marksheet_stage === 'pending' && s.marks;
-        });
+        saCurrentPendingStudents = result.data || [];
+        saCertPagination = result.pagination || null;
+        document.getElementById('saPendingCount').textContent = saCertPagination ? saCertPagination.total : saCurrentPendingStudents.length;
 
-        certApplyFilters();
+        if (saCurrentPendingStudents.length === 0) {
+            document.getElementById('saCertPagination').classList.add('hidden');
+            document.getElementById('saCertEmpty').classList.remove('hidden');
+            return;
+        }
+
+        renderPendingTable();
     })
     .catch(function() {
         document.getElementById('saCertLoading').innerHTML = '<p style="color:#dc2626;">Failed to load data.</p>';
     });
 }
 
-function certApplyFilters() {
-    var branchFilter = document.getElementById('saCertBranchFilter').value;
-    var query = document.getElementById('saCertSearch').value.toLowerCase();
-
-    saFilteredPending = saAllPendingStudents.filter(function(s) {
-        if (branchFilter !== 'all' && s.branch_id != branchFilter) return false;
-        if (query) {
-            var match = (s.student_name || '').toLowerCase().indexOf(query) !== -1 ||
-                (s.registration_number || '').toLowerCase().indexOf(query) !== -1;
-            if (!match) return false;
-        }
-        return true;
-    });
-
-    document.getElementById('saPendingCount').textContent = saFilteredPending.length;
-
-    if (saFilteredPending.length === 0) {
-        document.getElementById('saCertTableWrapper').classList.add('hidden');
-        document.getElementById('saCertEmpty').classList.remove('hidden');
-    } else {
-        document.getElementById('saCertEmpty').classList.add('hidden');
-        renderPendingTable();
-    }
-}
-
 function renderPendingTable() {
     document.getElementById('saCertTableWrapper').classList.remove('hidden');
     var tbody = document.getElementById('saCertBody');
 
-    tbody.innerHTML = saFilteredPending.map(function(s, i) {
+    tbody.innerHTML = saCurrentPendingStudents.map(function(s, i) {
         var overallPct = s.overall_percent ? s.overall_percent + '%' : '-';
 
         return '<tr>' +
@@ -234,10 +271,12 @@ function renderPendingTable() {
             '</td>' +
         '</tr>';
     }).join('');
+
+    saRenderCertPagination();
 }
 
 function openApproveModal(index) {
-    saApproveTarget = saFilteredPending[index];
+    saApproveTarget = saCurrentPendingStudents[index];
     document.getElementById('saApproveStudentInfo').textContent =
         saApproveTarget.student_name + ' (' + saApproveTarget.registration_number + ') - ' + (saApproveTarget.branch_name || '');
 
@@ -315,11 +354,13 @@ function finalApprove() {
         toastr.success('Certificate approved for ' + saApproveTarget.student_name + ' (ID: ' + marksheetId + ')');
         document.getElementById('saConfirmModal').style.display = 'none';
 
-        // Remove from list
-        var targetId = saApproveTarget.student_id;
-        saAllPendingStudents = saAllPendingStudents.filter(function(s) { return s.student_id !== targetId; });
+        var reloadPage = saCertPagination ? saCertPagination.current_page : 1;
+        if (saCertPagination && saCurrentPendingStudents.length === 1 && saCertPagination.current_page > 1) {
+            reloadPage = saCertPagination.current_page - 1;
+        }
+
         saApproveTarget = null;
-        certApplyFilters();
+        saLoadPendingForCurrentFilters(reloadPage);
     })
     .catch(function() {
         toastr.error('Network error. Please try again.');
@@ -333,5 +374,20 @@ function saEsc(text) {
     var d = document.createElement('div');
     d.textContent = text;
     return d.innerHTML;
+}
+
+function saRenderCertPagination() {
+    var paginationEl = document.getElementById('saCertPagination');
+    var infoEl = document.getElementById('saCertPageInfo');
+
+    if (!saCertPagination || saCertPagination.last_page <= 1) {
+        paginationEl.classList.add('hidden');
+        return;
+    }
+
+    paginationEl.classList.remove('hidden');
+    infoEl.textContent = 'Showing ' + (saCertPagination.from || 0) + '-' + (saCertPagination.to || 0) + ' of ' + saCertPagination.total + ' pending approvals';
+    document.getElementById('saCertPrevBtn').disabled = saCertPagination.current_page <= 1;
+    document.getElementById('saCertNextBtn').disabled = saCertPagination.current_page >= saCertPagination.last_page;
 }
 </script>
