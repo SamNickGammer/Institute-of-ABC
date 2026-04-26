@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\api\AdminLoginControllerAPI;
 use App\Http\Controllers\api\AdminBranchControllerAPI;
 use App\Http\Controllers\api\CertificateController;
+use App\Http\Controllers\api\LibraryControllerAPI;
 
 Route::post('/admin-login', [AdminLoginControllerAPI::class, 'login']);
 Route::post('/get_student_details', [AdminBranchControllerAPI::class, 'getStudentDetailsByRegistrationNumber']);
@@ -48,4 +49,18 @@ Route::prefix('admin')->name('admin.')->group(function () {
     Route::post('/dashboard/summary', [AdminBranchControllerAPI::class, 'getSuperadminDashboardSummary']);
     Route::post('/admin/set_password', [AdminBranchControllerAPI::class, 'adminSetPasswordForBranch']);
     Route::post('/update_credentials', [AdminBranchControllerAPI::class, 'updateAdminCredentials']);
+
+    Route::prefix('library')->group(function () {
+        Route::post('/config', [LibraryControllerAPI::class, 'getConfig']);
+        Route::post('/config/update', [LibraryControllerAPI::class, 'updateConfig']);
+        Route::post('/dashboard', [LibraryControllerAPI::class, 'getDashboard']);
+        Route::post('/bookings', [LibraryControllerAPI::class, 'getBookings']);
+        Route::post('/availability', [LibraryControllerAPI::class, 'getAvailability']);
+        Route::post('/admit', [LibraryControllerAPI::class, 'admitMember']);
+        Route::post('/booking/confirm', [LibraryControllerAPI::class, 'confirmBooking']);
+        Route::post('/booking/update_price', [LibraryControllerAPI::class, 'updateBookingPrice']);
+        Route::post('/booking/record_payment', [LibraryControllerAPI::class, 'recordPayment']);
+        Route::post('/booking/extend', [LibraryControllerAPI::class, 'extendBooking']);
+        Route::post('/booking/delete', [LibraryControllerAPI::class, 'deleteBooking']);
+    });
 });

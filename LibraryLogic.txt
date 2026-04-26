@@ -1,0 +1,1116 @@
+import { useState, useEffect, useMemo } from "react";
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
+function rng(s, e) { const a = []; for (let i = s; i <= e; i++) a.push(i); return a; }
+
+// ── Constants ──────────────────────────────────────────────────────────────────
+const SLOTS = [
+  { id:"A", label:"Slot A", time:"6AM–10AM",  color:"#f59e0b" },
+  { id:"B", label:"Slot B", time:"10AM–2PM",  color:"#10b981" },
+  { id:"C", label:"Slot C", time:"2PM–6PM",   color:"#3b82f6" },
+  { id:"D", label:"Slot D", time:"6PM–10PM",  color:"#a78bfa" },
+];
+const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const LOCKERS = [1,2,3,4,5,6];
+const CY  = new Date().getFullYear();
+const CM  = new Date().getMonth();
+
+const BLOCK_LAYOUT = {
+  A: [
+    { row:"A", seats: rng(1,19) },
+    { row:"B", seats: rng(0,11) },
+    { row:"C", seats: rng(0,11) },
+    { row:"D", seats: rng(1,17) },
+    { row:"E", seats: rng(1,7)  },
+  ],
+  B: [
+    { row:"A", seats: rng(1,16) },
+    { row:"B", seats: rng(1,14) },
+    { row:"C", seats: rng(1,15) },
+    { row:"D", seats: rng(1,19) },
+  ],
+};
+const TOTAL_A = BLOCK_LAYOUT.A.reduce((s,r)=>s+r.seats.length,0);
+const TOTAL_B = BLOCK_LAYOUT.B.reduce((s,r)=>s+r.seats.length,0);
+const TOTAL_SEATS = TOTAL_A + TOTAL_B;
+
+const sid    = (bl,row,n) => `${bl}_${row}${n}`;
+const psid   = (id) => { const u=id.indexOf("_"); return { bl:id.slice(0,u), rest:id.slice(u+1) }; };
+const slabel = (id) => { if(!id)return""; return psid(id).rest; };
+
+// ── Pricing ────────────────────────────────────────────────────────────────────
+const BASE_PRICES = {1:300,2:500,3:800,4:1000};
+const LOCKER_PRICE = 300;
+function calcPrice(slots,lockers=[]){ return (BASE_PRICES[slots.length]??300)+(lockers.length*LOCKER_PRICE); }
+const INR = n => `₹${Number(n||0).toLocaleString("en-IN")}`;
+
+// ── Storage ────────────────────────────────────────────────────────────────────
+function loadData(){ try{return JSON.parse(localStorage.getItem("sc_v5")||"{}");}catch{return{};} }
+function saveData(d){ localStorage.setItem("sc_v5",JSON.stringify(d)); }
+function mKey(y,m){ return `${y}-${String(m+1).padStart(2,"0")}`; }
+function genId(){ return Math.random().toString(36).slice(2)+Date.now().toString(36); }
+
+// ── CSS ────────────────────────────────────────────────────────────────────────
+const CSS = `
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#060c18}
+::-webkit-scrollbar{width:3px}::-webkit-scrollbar-thumb{background:#1a2d45;border-radius:2px}
+.card{background:#0b1626;border:1px solid #132040;border-radius:10px;padding:18px}
+.btn{border:none;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:700;border-radius:7px;transition:all .18s;display:inline-flex;align-items:center;gap:5px;font-size:12px}
+.btn-amber{background:#f59e0b;color:#000;padding:10px 22px;font-size:13px}
+.btn-amber:hover{background:#fbbf24;transform:translateY(-1px)}
+.btn-amber:disabled{opacity:.4;cursor:not-allowed;transform:none}
+.btn-ghost{background:transparent;border:1.5px solid #132040;color:#64748b;padding:7px 14px}
+.btn-ghost:hover{border-color:#f59e0b55;color:#94a3b8}
+.btn-green{background:#071510;border:1.5px solid #10b98140;color:#10b981;padding:7px 14px}
+.btn-green:hover{border-color:#10b981;background:#0a2010}
+.btn-red{background:#150707;border:1.5px solid #ef444430;color:#ef4444;padding:7px 14px;font-family:'DM Sans',sans-serif;font-weight:700;border-radius:7px;cursor:pointer;transition:all .18s;display:inline-flex;align-items:center;gap:5px;font-size:12px}
+.btn-red:hover{background:#1f0909}
+.btn-big{background:linear-gradient(135deg,#f59e0b,#f97316);color:#000;padding:13px 26px;font-size:14px;border-radius:9px;border:none;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:700;transition:all .2s;display:inline-flex;align-items:center;gap:8px}
+.btn-big:hover{transform:translateY(-2px);box-shadow:0 8px 24px #f59e0b40}
+.inp{background:#08111f;border:1.5px solid #132040;border-radius:7px;color:#b8cce0;font-family:'DM Mono',monospace;font-size:12px;padding:9px 13px;width:100%;outline:none;transition:border .2s}
+.inp:focus{border-color:#f59e0b}
+.inp-price{background:#08111f;border:1.5px solid #f59e0b50;border-radius:7px;color:#f59e0b;font-family:'Bebas Neue',sans-serif;font-size:22px;padding:8px 14px;outline:none;transition:border .2s;width:130px;letter-spacing:.04em}
+.inp-price:focus{border-color:#f59e0b}
+.tag{display:inline-flex;align-items:center;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;font-family:'DM Sans',sans-serif;letter-spacing:.02em}
+.tog{border:1.5px solid #132040;background:#08111f;border-radius:6px;padding:6px 12px;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;color:#475569;transition:all .15s}
+.tog.on{border-color:#f59e0b;color:#f59e0b;background:#150f00}
+.tog:hover:not(.on):not(:disabled){border-color:#1e3355;color:#64748b}
+.tog:disabled{opacity:.2;cursor:not-allowed}
+.nav{display:flex;gap:2px;background:#08111f;border:1px solid #132040;border-radius:8px;padding:3px;width:fit-content}
+.nav-item{border:none;cursor:pointer;padding:7px 16px;border-radius:5px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;color:#475569;background:transparent;transition:all .18s;letter-spacing:.03em;text-transform:uppercase}
+.nav-item.active{background:#132040;color:#f59e0b}
+.nav-item:hover:not(.active){color:#64748b}
+.mcard{background:#0b1626;border:1.5px solid #132040;border-radius:9px;padding:12px 14px;cursor:pointer;transition:all .2s;position:relative;overflow:hidden}
+.mcard:hover{border-color:#f59e0b44;transform:translateY(-1px);box-shadow:0 4px 16px rgba(0,0,0,.4)}
+.mcard.is-cur{border-color:#f59e0b55;background:#0f1a2e}
+.mcard.sel{border-color:#f59e0b;background:#150f00}
+.tbl{width:34px;height:22px;border-radius:4px;font-size:8.5px;font-weight:700;display:flex;align-items:center;justify-content:center;cursor:pointer;border:1.5px solid transparent;font-family:'DM Mono',monospace;transition:all .12s;flex-shrink:0}
+.tbl:hover:not(:disabled):not(.disp){transform:scale(1.15)}
+.tbl:disabled{opacity:.2;cursor:not-allowed}
+.tbl.sel{border-color:#f59e0b;background:#150f00;color:#f59e0b}
+.tbl.avail{background:#071510;border-color:#0a2e1a;color:#10b981}
+.tbl.taken{background:#150707;border-color:#2d0f0f;color:#ef4444}
+.tbl.disp{cursor:default}
+.tbl-sm{width:28px;height:19px;border-radius:3px;font-size:7.5px;font-weight:700;display:flex;align-items:center;justify-content:center;cursor:default;border:1px solid transparent;font-family:'DM Mono',monospace;flex-shrink:0;transition:transform .1s}
+.tbl-sm.avail{background:#071510;border-color:#0a2e1a;color:#10b981}
+.tbl-sm.taken{background:#150707;border-color:#2d0f0f;color:#ef4444}
+.tbl-sm:hover{transform:scale(1.2);z-index:10;position:relative}
+.pbar{height:3px;border-radius:2px;background:#0f1e35;overflow:hidden}
+.pbar-f{height:100%;border-radius:2px;transition:width .5s}
+.toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:#071510;border:1px solid #10b981;color:#10b981;padding:10px 22px;border-radius:8px;font-size:12px;font-weight:600;z-index:9999;white-space:nowrap;animation:su .22s ease;font-family:'DM Sans',sans-serif}
+@keyframes su{from{opacity:0;transform:translateX(-50%) translateY(10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+.ovl{position:fixed;inset:0;background:rgba(0,0,0,.82);display:flex;align-items:center;justify-content:center;z-index:100;padding:16px}
+.mbox{background:#0b1626;border:1.5px solid #1e3355;border-radius:12px;padding:24px;width:100%;max-width:500px;max-height:92vh;overflow-y:auto}
+.lbl{font-size:10px;font-weight:700;color:#334155;letter-spacing:.08em;text-transform:uppercase;display:block;margin-bottom:6px;font-family:'DM Sans',sans-serif}
+.fs{margin-bottom:16px}
+.sbox{background:#08111f;border:1px solid #132040;border-radius:8px;padding:12px;text-align:center}
+.row-label{font-size:9px;color:#334155;font-family:'DM Sans',sans-serif;font-weight:700;letter-spacing:.08em;margin-bottom:4px;text-transform:uppercase}
+.price-pill{background:#150f00;border:1.5px solid #f59e0b40;border-radius:8px;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.slot-tab{border:1.5px solid #132040;background:#08111f;border-radius:6px;padding:5px 11px;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:11px;font-weight:600;color:#475569;transition:all .15s}
+.slot-tab.on{border-color:var(--sc);color:var(--sc);background:var(--sbg)}
+.home-dash{display:grid;grid-template-columns:280px 1fr;gap:16px;align-items:start}
+@media(max-width:900px){.home-dash{grid-template-columns:1fr}}
+`;
+
+export default function App() {
+  const [data,      setData]      = useState(loadData);
+  const [year,      setYear]      = useState(CY);
+  const [selMonth,  setSelMonth]  = useState(null);
+  const [view,      setView]      = useState("dashboard");
+  const [toast,     setToast]     = useState(null);
+  const [modal,     setModal]     = useState(null);
+  const [slotFilt,  setSlotFilt]  = useState("A");
+  const [search,    setSearch]    = useState("");
+  const [extTgts,   setExtTgts]   = useState([]);
+  const [payForm,   setPayForm]   = useState({method:"cash",collectedBy:"",note:""});
+  const [editPriceVal,setEditPriceVal] = useState("");
+  // Home: which slot to preview in seat map
+  const [homeSlot,  setHomeSlot]  = useState("A");
+
+  const EF = {
+    name:"", phone:"", note:"", block:"A", seat:"", slots:[], months:[CM],
+    status:"confirmed", lockers:[], customPrice:null,
+    payment:{status:"pending",method:"",collectedBy:"",note:""}
+  };
+  const [form, setForm] = useState(EF);
+  const [fErr, setFErr] = useState("");
+
+  useEffect(()=>{ saveData(data); },[data]);
+  useEffect(()=>{
+    if(!toast) return;
+    const t=setTimeout(()=>setToast(null),2800);
+    return ()=>clearTimeout(t);
+  },[toast]);
+
+  // ── Data helpers ─────────────────────────────────────────────────────────────
+  const mBks = (m=selMonth,y=year) => data[mKey(y,m)] || [];
+
+  const occSeats = (slots,months,xId=null,y=year) => {
+    const s=new Set();
+    months.forEach(mo=>(data[mKey(y,mo)]||[]).forEach(b=>{
+      if(b.id===xId)return;
+      if(b.slots.some(sl=>slots.includes(sl)))s.add(b.seat);
+    }));
+    return s;
+  };
+
+  const usedLkrs = (months,xId=null,y=year) => {
+    const s=new Set();
+    months.forEach(mo=>(data[mKey(y,mo)]||[]).forEach(b=>{
+      if(b.id===xId)return;
+      (b.lockers||[]).forEach(l=>s.add(l));
+    }));
+    return s;
+  };
+
+  function openMonth(m){
+    setSelMonth(m); setView("dashboard");
+    setForm(f=>({...f,months:[m]})); setSearch("");
+  }
+
+  // ── Quick Admit (from home → goes to admit tab for current month) ───────────
+  function quickAdmit(){
+    setSelMonth(CM);
+    setView("admit");
+    setForm({...EF, months:[CM]});
+    setFErr("");
+  }
+
+  // ── Pricing ──────────────────────────────────────────────────────────────────
+  const fAutoPrice  = useMemo(()=>calcPrice(form.slots,form.lockers),[form.slots,form.lockers]);
+  const fFinalPrice = form.customPrice!==null ? Number(form.customPrice) : fAutoPrice;
+  const fMonthTotal = fFinalPrice*(form.months.length||1);
+
+  // ── Admit ─────────────────────────────────────────────────────────────────────
+  function admit(){
+    setFErr("");
+    if(!form.name.trim())   return setFErr("Name is required.");
+    if(!form.slots.length)  return setFErr("Select at least one time slot.");
+    if(!form.months.length) return setFErr("Select at least one month.");
+    if(!form.seat)          return setFErr("Select a seat.");
+    for(const mo of form.months){
+      if(occSeats(form.slots,[mo]).has(form.seat))
+        return setFErr(`Seat ${slabel(form.seat)} already booked in ${MONTHS[mo]} for these slots.`);
+    }
+    for(const mo of form.months){
+      const ul=usedLkrs([mo]);
+      for(const l of form.lockers){
+        if(ul.has(l))return setFErr(`Locker ${l} already assigned in ${MONTHS[mo]}.`);
+      }
+    }
+    const price=fFinalPrice; const gid=genId(); const nd={...data};
+    form.months.forEach(mo=>{
+      const k=mKey(year,mo);
+      nd[k]=[...(nd[k]||[]),{
+        id:genId(),groupId:gid,
+        name:form.name.trim(),phone:form.phone.trim(),note:form.note.trim(),
+        block:form.block,seat:form.seat,slots:[...form.slots],status:form.status,
+        lockers:[...form.lockers],price,
+        payment:{...form.payment},
+        createdAt:new Date().toLocaleDateString("en-IN"),
+      }];
+    });
+    setData(nd);
+    setForm({...EF,months:[selMonth??CM]});
+    setToast(`✓ ${form.name.trim()} admitted — ${INR(price)}/mo${form.months.length>1?` × ${form.months.length} = ${INR(fMonthTotal)}`:""}`)
+    setView("students");
+  }
+
+  function removeBk(bk,all){
+    const nd={...data};
+    if(all){Object.keys(nd).forEach(k=>nd[k]=(nd[k]||[]).filter(b=>b.groupId!==bk.groupId));}
+    else{const k=mKey(year,selMonth);nd[k]=(nd[k]||[]).filter(b=>b.id!==bk.id);}
+    setData(nd);setModal(null);setToast("Removed.");
+  }
+  function confirmBk(bk){
+    const k=mKey(year,selMonth);
+    setData(d=>({...d,[k]:(d[k]||[]).map(b=>b.id===bk.id?{...b,status:"confirmed"}:b)}));
+    setModal(null);setToast(`✓ ${bk.name} confirmed!`);
+  }
+  function recordPay(bk,pf){
+    const k=mKey(year,selMonth);
+    setData(d=>({...d,[k]:(d[k]||[]).map(b=>b.id===bk.id?{...b,payment:{...pf,status:"paid",paidAt:new Date().toLocaleDateString("en-IN")}}:b)}));
+    setModal(null);setToast(`Payment ${INR(bk.price||0)} recorded — ${pf.method?.toUpperCase()}`);
+  }
+  function saveEditPrice(bk,v){
+    const k=mKey(year,selMonth);
+    setData(d=>({...d,[k]:(d[k]||[]).map(b=>b.id===bk.id?{...b,price:Number(v)}:b)}));
+    setModal(null);setToast(`Price updated to ${INR(v)}`);
+  }
+  function extendBk(bk,targets){
+    const nd={...data};
+    targets.forEach(mo=>{
+      const k=mKey(year,mo);
+      if((nd[k]||[]).find(b=>b.groupId===bk.groupId))return;
+      if(occSeats(bk.slots,[mo]).has(bk.seat))return;
+      const ul=usedLkrs([mo]);
+      const safeL=(bk.lockers||[]).filter(l=>!ul.has(l));
+      nd[k]=[...(nd[k]||[]),{...bk,id:genId(),lockers:safeL,price:safeL.length!==(bk.lockers||[]).length?calcPrice(bk.slots,safeL):bk.price,payment:{status:"pending",method:"",collectedBy:"",note:""},createdAt:new Date().toLocaleDateString("en-IN")}];
+    });
+    setData(nd);setModal(null);setToast(`Extended to ${targets.map(m=>MONTHS[m]).join(", ")}`);
+  }
+
+  // ── Stats ─────────────────────────────────────────────────────────────────────
+  function mStats(m,y=year){
+    const bks=mBks(m,y);
+    const conf=bks.filter(b=>b.status==="confirmed").length;
+    const sec=bks.filter(b=>b.status==="secured").length;
+    const col=bks.filter(b=>b.payment?.status==="paid").reduce((s,b)=>s+(b.price||0),0);
+    const pen=bks.filter(b=>b.payment?.status!=="paid").reduce((s,b)=>s+(b.price||0),0);
+    let os=0;SLOTS.forEach(sl=>os+=new Set(bks.filter(b=>b.slots.includes(sl.id)).map(b=>b.seat)).size);
+    return{conf,sec,total:bks.length,pct:Math.round((os/(TOTAL_SEATS*4))*100),col,pen};
+  }
+
+  // ── Occupancy for a specific month ───────────────────────────────────────────
+  function buildOcc(m,y=year){
+    const bks=mBks(m,y); const r={};
+    SLOTS.forEach(sl=>{
+      const s=new Set(bks.filter(b=>b.slots.includes(sl.id)).map(b=>b.seat));
+      r[sl.id]={tables:s,occA:[...s].filter(x=>x.startsWith("A_")).length,occB:[...s].filter(x=>x.startsWith("B_")).length};
+    });
+    return r;
+  }
+
+  const occ = useMemo(()=>{
+    if(selMonth===null)return{};
+    return buildOcc(selMonth);
+  },[data,selMonth,year]);
+
+  // Home page: occupancy for current month
+  const homeOcc = useMemo(()=>buildOcc(CM,CY),[data]);
+
+  const fOcc   = useMemo(()=>(!form.slots.length||!form.months.length)?new Set():occSeats(form.slots,form.months),[form.slots,form.months,data]);
+  const fUsedL = useMemo(()=>!form.months.length?new Set():usedLkrs(form.months),[form.months,data]);
+
+  const fStudents = useMemo(()=>{
+    if(selMonth===null)return[];
+    return mBks().filter(b=>
+      b.name.toLowerCase().includes(search.toLowerCase())||
+      (b.seat||"").toLowerCase().includes(search.toLowerCase())||
+      (b.phone||"").includes(search)
+    );
+  },[data,selMonth,year,search]);
+
+  const revSum = useMemo(()=>{
+    if(selMonth===null)return{col:0,pen:0,total:0};
+    const bks=mBks();
+    const col=bks.filter(b=>b.payment?.status==="paid").reduce((s,b)=>s+(b.price||0),0);
+    const pen=bks.filter(b=>b.payment?.status!=="paid").reduce((s,b)=>s+(b.price||0),0);
+    return{col,pen,total:col+pen};
+  },[data,selMonth,year]);
+
+  const lockerStatus = useMemo(()=>{
+    if(selMonth===null)return{};
+    const r={};LOCKERS.forEach(l=>r[l]=null);
+    mBks().forEach(b=>(b.lockers||[]).forEach(l=>{if(!r[l])r[l]=b;}));
+    return r;
+  },[data,selMonth,year]);
+
+  // Home locker status (current month)
+  const homeLockerStatus = useMemo(()=>{
+    const r={};LOCKERS.forEach(l=>r[l]=null);
+    mBks(CM,CY).forEach(b=>(b.lockers||[]).forEach(l=>{if(!r[l])r[l]=b;}));
+    return r;
+  },[data]);
+
+  const cSlot=SLOTS.find(s=>s.id===slotFilt);
+  const curSt=mStats(CM,CY);
+  const homeBks=mBks(CM,CY);
+  const homeSlotObj=SLOTS.find(s=>s.id===homeSlot);
+
+  // ── RENDER ────────────────────────────────────────────────────────────────────
+  return (
+    <div style={{minHeight:"100vh",background:"#060c18",fontFamily:"'DM Mono',monospace",color:"#b8cce0"}}>
+      <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Bebas+Neue&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet"/>
+      <style>{CSS}</style>
+
+      {/* TOP BAR */}
+      <div style={{background:"#050b16",borderBottom:"1px solid #0f1e35",padding:"0 20px",height:54,display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:50}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <div style={{width:32,height:32,background:"linear-gradient(135deg,#f59e0b,#ef4444)",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15}}>📚</div>
+          <div>
+            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:19,letterSpacing:"0.06em",color:"#e2e8f0",lineHeight:1}}>STUDY CENTER</div>
+            <div style={{fontSize:9,color:"#1e3355",letterSpacing:"0.12em",fontFamily:"'DM Sans',sans-serif",fontWeight:700}}>SEAT MANAGEMENT</div>
+          </div>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          {selMonth!==null
+            ? <>
+                <div style={{background:"#08111f",border:"1px solid #1e3355",borderRadius:6,padding:"4px 12px",color:"#f59e0b",fontFamily:"'Bebas Neue',sans-serif",fontSize:17,letterSpacing:"0.06em"}}>{MONTHS[selMonth]} {year}</div>
+                <button className="btn btn-ghost" onClick={()=>{setSelMonth(null);setView("dashboard");}}>← Home</button>
+              </>
+            : <button className="btn-big" onClick={quickAdmit}>+ Add Student</button>
+          }
+        </div>
+      </div>
+
+      <div style={{maxWidth:1150,margin:"0 auto",padding:"20px 16px"}}>
+
+        {/* ══════════════════════════════════════════════════════════
+            HOME SCREEN
+        ══════════════════════════════════════════════════════════ */}
+        {selMonth===null && (<>
+
+          {/* Year picker row */}
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:18}}>
+            <div>
+              <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:28,color:"#e2e8f0",letterSpacing:"0.04em",lineHeight:1}}>
+                {MONTHS[CM].toUpperCase()} {CY} &nbsp;
+                <span style={{fontSize:14,color:"#334155",fontFamily:"'DM Sans',sans-serif",fontWeight:500,letterSpacing:0}}>— Select a month below to manage</span>
+              </div>
+            </div>
+            <div style={{display:"flex",gap:6,alignItems:"center"}}>
+              <button className="btn btn-ghost" onClick={()=>setYear(y=>y-1)}>← {year-1}</button>
+              <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:20,color:"#f59e0b",padding:"4px 14px",background:"#08111f",border:"1px solid #1e3355",borderRadius:6,letterSpacing:"0.06em"}}>{year}</div>
+              <button className="btn btn-ghost" onClick={()=>setYear(y=>y+1)}>{year+1} →</button>
+            </div>
+          </div>
+
+          {/* ── 2-col layout: left = month grid, right = current month dashboard ── */}
+          <div className="home-dash">
+
+            {/* LEFT: compact month grid */}
+            <div>
+              <div style={{fontSize:10,color:"#334155",fontFamily:"'DM Sans',sans-serif",fontWeight:700,letterSpacing:"0.1em",marginBottom:10}}>MONTHS — {year}</div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:7,marginBottom:14}}>
+                {MONTHS.map((mo,mi)=>{
+                  const st=mStats(mi); const isCur=year===CY&&mi===CM;
+                  return (
+                    <div key={mi} className={`mcard${isCur?" is-cur":""}`} onClick={()=>openMonth(mi)}>
+                      {isCur&&<div style={{position:"absolute",top:5,right:7,fontSize:7,color:"#f59e0b",fontFamily:"'DM Sans',sans-serif",fontWeight:700,letterSpacing:"0.08em"}}>NOW</div>}
+                      <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:20,color:st.total>0?"#e2e8f0":"#1e3355",letterSpacing:"0.04em",lineHeight:1}}>{mo}</div>
+                      {st.total>0 && <>
+                        <div style={{display:"flex",gap:3,flexWrap:"wrap",margin:"5px 0"}}>
+                          {st.conf>0&&<span className="tag" style={{background:"#071510",color:"#10b981",border:"1px solid #0a2e1a",padding:"1px 5px"}}>{st.conf}✓</span>}
+                          {st.sec>0 &&<span className="tag" style={{background:"#100d00",color:"#eab308",border:"1px solid #2d2400",padding:"1px 5px"}}>{st.sec}⏳</span>}
+                        </div>
+                        <div className="pbar"><div className="pbar-f" style={{width:`${st.pct}%`,background:st.pct>70?"#ef4444":st.pct>40?"#f59e0b":"#10b981"}}/></div>
+                        <div style={{fontSize:8,color:"#1e3355",marginTop:3,fontFamily:"'DM Sans',sans-serif"}}>{st.pct}% full</div>
+                      </>}
+                      {st.total===0&&<div style={{fontSize:9,color:"#0f1e35",marginTop:2,fontFamily:"'DM Sans',sans-serif"}}>Empty</div>}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Mini bar chart */}
+              <div className="card" style={{padding:"14px"}}>
+                <div style={{fontSize:9,color:"#1e3355",fontFamily:"'DM Sans',sans-serif",fontWeight:700,letterSpacing:"0.1em",marginBottom:10}}>{year} CAPACITY</div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(12,1fr)",gap:2,alignItems:"flex-end",height:44}}>
+                  {MONTHS.map((mo,mi)=>{
+                    const st=mStats(mi); const col=st.pct>70?"#ef4444":st.pct>40?"#f59e0b":"#10b981";
+                    return (
+                      <div key={mi} style={{display:"flex",flexDirection:"column",alignItems:"center",cursor:"pointer",gap:2}} onClick={()=>openMonth(mi)}>
+                        <div style={{width:"100%",height:36,display:"flex",alignItems:"flex-end",background:"#08111f",borderRadius:"2px 2px 0 0",overflow:"hidden",border:"1px solid #0f1e35"}}>
+                          <div style={{width:"100%",height:`${Math.max(st.pct,3)}%`,background:col,opacity:st.total===0?.1:1,transition:"height .4s"}}/>
+                        </div>
+                        <div style={{fontSize:7,color:"#0f1e35",fontFamily:"'DM Sans',sans-serif",fontWeight:700}}>{mo.slice(0,1)}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Pricing ref */}
+              <div className="card" style={{padding:"12px",marginTop:8}}>
+                <div style={{fontSize:9,color:"#1e3355",fontFamily:"'DM Sans',sans-serif",fontWeight:700,letterSpacing:"0.1em",marginBottom:8}}>PRICING</div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:5}}>
+                  {[[1,"₹300"],[2,"₹500"],[3,"₹800"],[4,"₹1000"]].map(([n,p])=>(
+                    <div key={n} style={{background:"#08111f",border:"1px solid #0f1e35",borderRadius:5,padding:"5px 8px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                      <span style={{fontSize:10,color:"#334155",fontFamily:"'DM Sans',sans-serif"}}>{n} slot{n>1?"s":""}</span>
+                      <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:14,color:"#f59e0b",letterSpacing:"0.04em"}}>{p}</span>
+                    </div>
+                  ))}
+                  <div style={{gridColumn:"1/-1",background:"#08111f",border:"1px solid #a78bfa20",borderRadius:5,padding:"5px 8px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <span style={{fontSize:10,color:"#334155",fontFamily:"'DM Sans',sans-serif"}}>+ per locker</span>
+                    <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:14,color:"#a78bfa",letterSpacing:"0.04em"}}>+₹300</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* RIGHT: current month full dashboard */}
+            <div>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+                <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:20,color:"#e2e8f0",letterSpacing:"0.04em"}}>
+                  {MONTHS[CM]} {CY} — DASHBOARD
+                </div>
+                <button className="btn btn-ghost" style={{fontSize:11}} onClick={()=>openMonth(CM)}>
+                  Open Full View →
+                </button>
+              </div>
+
+              {/* Stat row */}
+              <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:7,marginBottom:12}}>
+                {[
+                  {lb:"Students",val:homeBks.length,col:"#b8cce0"},
+                  {lb:"Confirmed",val:curSt.conf,col:"#10b981"},
+                  {lb:"Secured",val:curSt.sec,col:"#eab308"},
+                  {lb:"Lockers Used",val:new Set(homeBks.flatMap(b=>b.lockers||[])).size,col:"#a78bfa"},
+                ].map(({lb,val,col})=>(
+                  <div key={lb} className="sbox" style={{padding:"10px 8px"}}>
+                    <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:24,color:col,letterSpacing:"0.04em"}}>{val}</div>
+                    <div style={{fontSize:9,color:"#334155",fontFamily:"'DM Sans',sans-serif",fontWeight:600}}>{lb}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Revenue */}
+              {(() => {
+                const col=homeBks.filter(b=>b.payment?.status==="paid").reduce((s,b)=>s+(b.price||0),0);
+                const pen=homeBks.filter(b=>b.payment?.status!=="paid").reduce((s,b)=>s+(b.price||0),0);
+                const tot=col+pen;
+                return (
+                  <div className="card" style={{marginBottom:10,padding:"12px 16px",borderLeft:"3px solid #10b981"}}>
+                    <div style={{fontSize:9,color:"#1e3355",fontFamily:"'DM Sans',sans-serif",fontWeight:700,letterSpacing:"0.1em",marginBottom:8}}>REVENUE — {MONTHS[CM]} {CY}</div>
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6,marginBottom:8}}>
+                      {[{lb:"Expected",val:tot,col:"#b8cce0"},{lb:"Collected",val:col,col:"#10b981"},{lb:"Pending",val:pen,col:"#ef4444"}].map(({lb,val,col})=>(
+                        <div key={lb} style={{background:"#08111f",borderRadius:5,padding:"7px 10px"}}>
+                          <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:16,color:col,letterSpacing:"0.04em"}}>{INR(val)}</div>
+                          <div style={{fontSize:9,color:"#334155",fontFamily:"'DM Sans',sans-serif",fontWeight:600}}>{lb}</div>
+                        </div>
+                      ))}
+                    </div>
+                    {tot>0&&<div className="pbar"><div className="pbar-f" style={{width:`${Math.round((col/tot)*100)}%`,background:"#10b981"}}/></div>}
+                  </div>
+                );
+              })()}
+
+              {/* Slot summary bars */}
+              <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6,marginBottom:10}}>
+                {SLOTS.map(sl=>{
+                  const o=homeOcc[sl.id]; const tot=(o?.occA||0)+(o?.occB||0); const free=TOTAL_SEATS-tot;
+                  return (
+                    <div key={sl.id} style={{background:"#0b1626",border:`1px solid ${sl.color}25`,borderRadius:8,padding:"9px 10px"}}>
+                      <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:14,color:sl.color,letterSpacing:"0.04em"}}>{sl.label}</div>
+                      <div style={{fontSize:8,color:"#334155",fontFamily:"'DM Sans',sans-serif",marginBottom:5}}>{sl.time}</div>
+                      <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:sl.color}}>{free}</div>
+                      <div style={{fontSize:8,color:"#1e3355",fontFamily:"'DM Sans',sans-serif"}}>free of {TOTAL_SEATS}</div>
+                      <div className="pbar" style={{marginTop:5}}><div className="pbar-f" style={{width:`${(tot/TOTAL_SEATS)*100}%`,background:sl.color}}/></div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Locker row */}
+              <div style={{marginBottom:10}}>
+                <div style={{fontSize:9,color:"#334155",fontFamily:"'DM Sans',sans-serif",fontWeight:700,letterSpacing:"0.1em",marginBottom:7}}>LOCKERS — {MONTHS[CM]}</div>
+                <div style={{display:"flex",gap:7}}>
+                  {LOCKERS.map(l=>{
+                    const owner=homeLockerStatus[l];
+                    return (
+                      <div key={l} title={owner?`Locker ${l}: ${owner.name}`:`Locker ${l}: Available`}
+                        style={{flex:1,background:owner?"#1a0f2e":"#08111f",border:`1.5px solid ${owner?"#a78bfa40":"#132040"}`,borderRadius:7,padding:"7px 4px",textAlign:"center",cursor:owner?"help":"default"}}>
+                        <div style={{fontSize:14,marginBottom:2}}>{owner?"🔒":"🔓"}</div>
+                        <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:12,color:owner?"#a78bfa":"#1e3355",letterSpacing:"0.04em"}}>{l}</div>
+                        {owner&&<div style={{fontSize:7,color:"#7c3aed",fontFamily:"'DM Sans',sans-serif",fontWeight:700,marginTop:1,maxWidth:"100%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{owner.name.split(" ")[0]}</div>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* LIVE SEAT MAP for current month */}
+              <div className="card" style={{padding:"14px"}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+                  <div style={{fontSize:9,color:"#334155",fontFamily:"'DM Sans',sans-serif",fontWeight:700,letterSpacing:"0.1em"}}>
+                    SEAT MAP — {MONTHS[CM]}
+                  </div>
+                  <div style={{display:"flex",gap:5}}>
+                    {SLOTS.map(sl=>(
+                      <button key={sl.id}
+                        className="slot-tab"
+                        style={{"--sc":sl.color,"--sbg":sl.color+"15",...(homeSlot===sl.id?{borderColor:sl.color,color:sl.color,background:sl.color+"15"}:{})}}
+                        onClick={()=>setHomeSlot(sl.id)}>
+                        {sl.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* free count bar */}
+                {(() => {
+                  const o=homeOcc[homeSlot];
+                  const tot=(o?.occA||0)+(o?.occB||0);
+                  const free=TOTAL_SEATS-tot;
+                  return (
+                    <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:10}}>
+                      <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:20,color:homeSlotObj?.color,letterSpacing:"0.04em"}}>{free} free</div>
+                      <div style={{flex:1}}><div className="pbar"><div className="pbar-f" style={{width:`${(tot/TOTAL_SEATS)*100}%`,background:homeSlotObj?.color}}/></div></div>
+                      <div style={{fontSize:10,color:"#334155",fontFamily:"'DM Sans',sans-serif"}}>{tot} occupied</div>
+                    </div>
+                  );
+                })()}
+
+                {/* Block A + Block B seats */}
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+                  {["A","B"].map(bl=>{
+                    const o=homeOcc[homeSlot];
+                    return (
+                      <div key={bl}>
+                        <div style={{fontSize:9,color:"#1e3355",fontFamily:"'DM Sans',sans-serif",fontWeight:700,letterSpacing:"0.08em",marginBottom:6}}>
+                          BLOCK {bl} &nbsp;<span style={{color:"#0a1830"}}>{bl==="A"?TOTAL_A:TOTAL_B} seats</span>
+                        </div>
+                        {BLOCK_LAYOUT[bl].map(({row,seats})=>(
+                          <div key={row} style={{marginBottom:6}}>
+                            <div className="row-label">{row}</div>
+                            <div style={{display:"flex",flexWrap:"wrap",gap:2}}>
+                              {seats.map(n=>{
+                                const id=sid(bl,row,n);
+                                const free=!o?.tables.has(id);
+                                const stu=free?null:homeBks.find(b=>b.seat===id&&b.slots.includes(homeSlot));
+                                return (
+                                  <div key={n} className={`tbl-sm${free?" avail":" taken"}`}
+                                    title={free?`${row}${n}: Free`:`${row}${n}: ${stu?.name||"Occupied"}${stu?.status?" ("+stu.status+")":""}`}>
+                                    {row}{n}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div style={{fontSize:8,color:"#0f1e35",marginTop:8,fontFamily:"'DM Sans',sans-serif",fontWeight:600,letterSpacing:"0.05em"}}>
+                  <span style={{color:"#10b98170"}}>■ FREE</span>&nbsp;&nbsp;
+                  <span style={{color:"#ef444470"}}>■ OCCUPIED</span>&nbsp;&nbsp;
+                  Hover a seat to see student name
+                </div>
+              </div>
+            </div>
+          </div>
+        </>)}
+
+        {/* ══════════════════════════════════════════════════════════
+            MONTH VIEW
+        ══════════════════════════════════════════════════════════ */}
+        {selMonth!==null && (<>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:18}}>
+            <div className="nav">
+              {[["dashboard","Overview"],["admit","+ Admit"],["slots","Seats"],["students","Students"],["lockers","Lockers"]].map(([id,lb])=>(
+                <button key={id} className={`nav-item${view===id?" active":""}`} onClick={()=>setView(id)}>{lb}</button>
+              ))}
+            </div>
+            <div style={{fontSize:10,color:"#1e3355",fontFamily:"'DM Sans',sans-serif"}}>
+              {mBks().length} bookings · {INR(revSum.col)} collected · {INR(revSum.pen)} pending
+            </div>
+          </div>
+
+          {/* ─ OVERVIEW ─ */}
+          {view==="dashboard"&&(()=>{
+            const bks=mBks();
+            return (<>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:14}}>
+                {[
+                  {lb:"Students",val:bks.length,col:"#b8cce0"},
+                  {lb:"Confirmed",val:bks.filter(b=>b.status==="confirmed").length,col:"#10b981"},
+                  {lb:"Secured",val:bks.filter(b=>b.status==="secured").length,col:"#eab308"},
+                  {lb:"Lockers Used",val:new Set(bks.flatMap(b=>b.lockers||[])).size,col:"#a78bfa"},
+                ].map(({lb,val,col})=>(
+                  <div key={lb} className="sbox">
+                    <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:28,color:col,letterSpacing:"0.04em"}}>{val}</div>
+                    <div style={{fontSize:10,color:"#334155",fontFamily:"'DM Sans',sans-serif",fontWeight:600}}>{lb}</div>
+                  </div>
+                ))}
+              </div>
+              <div className="card" style={{marginBottom:14,borderLeft:"3px solid #10b981"}}>
+                <div style={{fontSize:10,color:"#1e3355",fontFamily:"'DM Sans',sans-serif",fontWeight:700,letterSpacing:"0.1em",marginBottom:10}}>REVENUE — {MONTHS[selMonth]} {year}</div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:10}}>
+                  {[{lb:"Expected",val:revSum.total,col:"#b8cce0"},{lb:"Collected",val:revSum.col,col:"#10b981"},{lb:"Pending",val:revSum.pen,col:"#ef4444"}].map(({lb,val,col})=>(
+                    <div key={lb} style={{background:"#08111f",borderRadius:6,padding:"10px 14px"}}>
+                      <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:20,color:col,letterSpacing:"0.04em"}}>{INR(val)}</div>
+                      <div style={{fontSize:10,color:"#334155",fontFamily:"'DM Sans',sans-serif",fontWeight:600}}>{lb}</div>
+                    </div>
+                  ))}
+                </div>
+                {revSum.total>0&&<div className="pbar"><div className="pbar-f" style={{width:`${Math.round((revSum.col/revSum.total)*100)}%`,background:"#10b981"}}/></div>}
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10}}>
+                {SLOTS.map(sl=>{
+                  const o=occ[sl.id]; const tot=(o?.occA||0)+(o?.occB||0);
+                  return (
+                    <div key={sl.id} className="card" style={{borderLeft:`3px solid ${sl.color}`}}>
+                      <div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}>
+                        <div>
+                          <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:"#e2e8f0",letterSpacing:"0.04em"}}>{sl.label}</span>
+                          <span style={{fontSize:10,color:"#334155",marginLeft:8,fontFamily:"'DM Sans',sans-serif"}}>{sl.time}</span>
+                        </div>
+                        <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:24,color:sl.color}}>{TOTAL_SEATS-tot}<span style={{fontSize:10,color:"#334155"}}> free</span></span>
+                      </div>
+                      <div className="pbar" style={{marginBottom:8}}><div className="pbar-f" style={{width:`${(tot/TOTAL_SEATS)*100}%`,background:sl.color}}/></div>
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+                        {[["A",TOTAL_A-(o?.occA||0),TOTAL_A],["B",TOTAL_B-(o?.occB||0),TOTAL_B]].map(([bl,fr,t2])=>(
+                          <div key={bl} style={{background:"#08111f",borderRadius:5,padding:"6px 10px"}}>
+                            <div style={{fontSize:9,color:"#1e3355",fontFamily:"'DM Sans',sans-serif",fontWeight:700}}>BLOCK {bl}</div>
+                            <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:15,color:sl.color}}>{fr}</span>
+                            <span style={{fontSize:10,color:"#334155",fontFamily:"'DM Sans',sans-serif"}}>/{t2}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>);
+          })()}
+
+          {/* ─ ADMIT ─ */}
+          {view==="admit"&&(
+            <div style={{maxWidth:700}}>
+              <div className="card">
+                <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:"#e2e8f0",letterSpacing:"0.04em",marginBottom:20}}>ADMIT STUDENT</div>
+
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}} className="fs">
+                  <div><div className="lbl">Name *</div><input className="inp" placeholder="Full name" value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))}/></div>
+                  <div><div className="lbl">Phone</div><input className="inp" placeholder="Mobile" value={form.phone} onChange={e=>setForm(f=>({...f,phone:e.target.value}))}/></div>
+                </div>
+
+                <div className="fs">
+                  <div className="lbl">Booking Status *</div>
+                  <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8}}>
+                    {[["confirmed","✓ Confirmed","#10b981","#071510"],["secured","⏳ Secured / Hold","#eab308","#100d00"]].map(([st,lb,col,bg])=>(
+                      <button key={st} className={`tog${form.status===st?" on":""}`}
+                        style={form.status===st?{borderColor:col,color:col,background:bg}:{}}
+                        onClick={()=>setForm(f=>({...f,status:st}))}>
+                        {lb}
+                      </button>
+                    ))}
+                  </div>
+                  <input className="inp" placeholder={form.status==="secured"?"Note — who is this held for?":"Note (optional)"} value={form.note} onChange={e=>setForm(f=>({...f,note:e.target.value}))}/>
+                </div>
+
+                <div className="fs">
+                  <div className="lbl">Month(s) * <span style={{color:"#1e3355",textTransform:"none",fontWeight:400,letterSpacing:0,fontSize:9}}>— current month pre-selected</span></div>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
+                    {MONTHS.map((mo,mi)=>(
+                      <button key={mi} className={`tog${form.months.includes(mi)?" on":""}`}
+                        onClick={()=>setForm(f=>({...f,months:f.months.includes(mi)?f.months.filter(m=>m!==mi):[...f.months,mi].sort((a,b)=>a-b),seat:""}))}>
+                        {mo}{year===CY&&mi===CM?" ★":""}
+                      </button>
+                    ))}
+                  </div>
+                  {form.months.length>1&&<div style={{fontSize:10,color:"#f59e0b",marginTop:5,fontFamily:"'DM Sans',sans-serif"}}>Booking for {form.months.length} months: {form.months.map(m=>MONTHS[m]).join(", ")}</div>}
+                </div>
+
+                <div className="fs">
+                  <div className="lbl">Time Slots *</div>
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                    {SLOTS.map(sl=>(
+                      <button key={sl.id} className={`tog${form.slots.includes(sl.id)?" on":""}`}
+                        style={form.slots.includes(sl.id)?{borderColor:sl.color,color:sl.color,background:sl.color+"12"}:{}}
+                        onClick={()=>setForm(f=>({...f,slots:f.slots.includes(sl.id)?f.slots.filter(s=>s!==sl.id):[...f.slots,sl.id],seat:"",customPrice:null}))}>
+                        {sl.label}<span style={{fontSize:9,opacity:.6}}> {sl.time}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="fs">
+                  <div className="lbl">Block</div>
+                  <div style={{display:"flex",gap:6,marginBottom:12}}>
+                    {["A","B"].map(bl=>(
+                      <button key={bl} className={`tog${form.block===bl?" on":""}`}
+                        onClick={()=>setForm(f=>({...f,block:bl,seat:""}))}>
+                        Block {bl}<span style={{fontSize:9,opacity:.5}}> ({bl==="A"?TOTAL_A:TOTAL_B} seats)</span>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="lbl">Seat * {(!form.slots.length||!form.months.length)&&<span style={{color:"#ef4444",fontWeight:400,textTransform:"none",letterSpacing:0}}>— select slots & months first</span>}</div>
+                  {(!form.slots.length||!form.months.length)
+                    ? <div style={{fontSize:12,color:"#1e3355"}}>Select time slots and months to see seat availability.</div>
+                    : <>
+                        {BLOCK_LAYOUT[form.block].map(({row,seats})=>(
+                          <div key={row} style={{marginBottom:10}}>
+                            <div className="row-label">Row {row}</div>
+                            <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
+                              {seats.map(n=>{
+                                const id=sid(form.block,row,n); const taken=fOcc.has(id); const sel=form.seat===id;
+                                return (
+                                  <button key={n} disabled={taken} className={`tbl${sel?" sel":taken?" taken":" avail"}`}
+                                    title={taken?"Occupied":"Available"}
+                                    onClick={()=>setForm(f=>({...f,seat:id}))}>
+                                    {row}{n}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                        <div style={{fontSize:9,color:"#1e3355",fontFamily:"'DM Sans',sans-serif",fontWeight:600,letterSpacing:"0.04em"}}>
+                          <span style={{color:"#10b981"}}>■ FREE</span>&nbsp;&nbsp;<span style={{color:"#ef4444"}}>■ TAKEN</span>&nbsp;&nbsp;<span style={{color:"#f59e0b"}}>■ SELECTED</span>
+                        </div>
+                      </>
+                  }
+                </div>
+
+                <div className="fs">
+                  <div className="lbl">Lockers — optional (+₹300 each/month)</div>
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                    {LOCKERS.map(l=>{
+                      const taken=fUsedL.has(l)&&!form.lockers.includes(l); const sel=form.lockers.includes(l);
+                      return (
+                        <button key={l} disabled={taken} className={`tog${sel?" on":""}`}
+                          style={taken?{opacity:.2,cursor:"not-allowed"}:sel?{borderColor:"#a78bfa",color:"#a78bfa",background:"#1a0f2e"}:{}}
+                          onClick={()=>setForm(f=>({...f,lockers:f.lockers.includes(l)?f.lockers.filter(x=>x!==l):[...f.lockers,l],customPrice:null}))}>
+                          🔒 {l}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {form.lockers.length>0&&<div style={{fontSize:10,color:"#a78bfa",marginTop:5,fontFamily:"'DM Sans',sans-serif"}}>{form.lockers.length} locker{form.lockers.length>1?"s":""} · +{INR(form.lockers.length*300)}/month</div>}
+                </div>
+
+                {form.slots.length>0&&(
+                  <div className="price-pill fs">
+                    <div>
+                      <div style={{fontSize:9,color:"#475569",fontFamily:"'DM Sans',sans-serif",fontWeight:600,letterSpacing:"0.08em",marginBottom:4}}>MONTHLY CHARGE</div>
+                      <div style={{fontSize:11,color:"#334155",fontFamily:"'DM Sans',sans-serif"}}>
+                        {BASE_PRICES[form.slots.length]||300} ({form.slots.length} slot{form.slots.length>1?"s":""})
+                        {form.lockers.length>0&&` + ${form.lockers.length*300} (${form.lockers.length} locker${form.lockers.length>1?"s":""})`}
+                        {form.customPrice!==null&&<span style={{color:"#ef4444"}}> → custom</span>}
+                      </div>
+                    </div>
+                    <div style={{display:"flex",alignItems:"center",gap:10}}>
+                      <div>
+                        <input className="inp-price" type="number"
+                          value={form.customPrice!==null?form.customPrice:fAutoPrice}
+                          onChange={e=>setForm(f=>({...f,customPrice:e.target.value}))}
+                          onBlur={e=>{const v=Number(e.target.value);if(!isNaN(v)&&v===fAutoPrice)setForm(f=>({...f,customPrice:null}));}}
+                          title="Tap to edit price"/>
+                        <div style={{fontSize:9,color:"#334155",fontFamily:"'DM Sans',sans-serif",textAlign:"center",marginTop:2}}>/month · tap to edit</div>
+                      </div>
+                      {form.months.length>1&&(
+                        <div style={{textAlign:"center"}}>
+                          <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:20,color:"#3b82f6",letterSpacing:"0.04em"}}>{INR(fFinalPrice*form.months.length)}</div>
+                          <div style={{fontSize:9,color:"#334155",fontFamily:"'DM Sans',sans-serif"}}>total ({form.months.length} months)</div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                <div className="fs">
+                  <div className="lbl">Payment at Admission</div>
+                  <div style={{background:"#08111f",border:"1px solid #132040",borderRadius:8,padding:"12px 14px"}}>
+                    <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:10}}>
+                      {[["pending","⏳ Will pay later"],["paid","✓ Paying now"]].map(([st,lb])=>(
+                        <button key={st} className={`tog${form.payment.status===st?" on":""}`}
+                          style={form.payment.status===st?{borderColor:st==="paid"?"#10b981":"#eab308",color:st==="paid"?"#10b981":"#eab308",background:st==="paid"?"#071510":"#100d00"}:{}}
+                          onClick={()=>setForm(f=>({...f,payment:{...f.payment,status:st}}))}>
+                          {lb}
+                        </button>
+                      ))}
+                    </div>
+                    {form.payment.status==="paid"&&(
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                        <div>
+                          <div className="lbl" style={{marginBottom:4}}>Method</div>
+                          <div style={{display:"flex",gap:6}}>
+                            {[["cash","💵 Cash"],["gpay","📱 GPay"]].map(([m,lb])=>(
+                              <button key={m} className={`tog${form.payment.method===m?" on":""}`}
+                                style={form.payment.method===m?{borderColor:"#3b82f6",color:"#3b82f6",background:"#071520"}:{}}
+                                onClick={()=>setForm(f=>({...f,payment:{...f.payment,method:m}}))}>
+                                {lb}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="lbl" style={{marginBottom:4}}>Collected By</div>
+                          <input className="inp" placeholder="Staff name" value={form.payment.collectedBy} onChange={e=>setForm(f=>({...f,payment:{...f.payment,collectedBy:e.target.value}}))}/>
+                        </div>
+                        <div style={{gridColumn:"1/-1"}}>
+                          <div className="lbl" style={{marginBottom:4}}>Note</div>
+                          <input className="inp" placeholder="e.g. paid 3 months cash ₹2400" value={form.payment.note} onChange={e=>setForm(f=>({...f,payment:{...f.payment,note:e.target.value}}))}/>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {fErr&&<div style={{background:"#150707",border:"1px solid #ef444440",borderRadius:6,padding:"8px 13px",color:"#ef4444",fontSize:11,marginBottom:14,fontFamily:"'DM Sans',sans-serif"}}>⚠ {fErr}</div>}
+                <button className="btn btn-amber" onClick={admit}>Admit Student →</button>
+              </div>
+            </div>
+          )}
+
+          {/* ─ SEATS ─ */}
+          {view==="slots"&&(<>
+            <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
+              {SLOTS.map(sl=>(
+                <button key={sl.id} className={`tog${slotFilt===sl.id?" on":""}`}
+                  style={slotFilt===sl.id?{borderColor:sl.color,color:sl.color,background:sl.color+"12"}:{}}
+                  onClick={()=>setSlotFilt(sl.id)}>
+                  {sl.label}<span style={{fontSize:9,opacity:.6}}> {sl.time}</span>
+                </button>
+              ))}
+            </div>
+            {(()=>{
+              const o=occ[slotFilt]; const fA=TOTAL_A-(o?.occA||0); const fB=TOTAL_B-(o?.occB||0);
+              return (<>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:14}}>
+                  {[{lb:"Total Free",val:fA+fB,col:cSlot.color},{lb:"Block A Free",val:fA,sub:`${o?.occA||0}/${TOTAL_A} taken`,col:"#94a3b8"},{lb:"Block B Free",val:fB,sub:`${o?.occB||0}/${TOTAL_B} taken`,col:"#94a3b8"}].map(({lb,val,col,sub})=>(
+                    <div key={lb} className="sbox">
+                      <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:26,color:col,letterSpacing:"0.04em"}}>{val}</div>
+                      <div style={{fontSize:10,color:"#334155",fontFamily:"'DM Sans',sans-serif",fontWeight:600}}>{lb}</div>
+                      {sub&&<div style={{fontSize:9,color:"#1e3355",marginTop:2}}>{sub}</div>}
+                    </div>
+                  ))}
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+                  {["A","B"].map(bl=>(
+                    <div key={bl} className="card">
+                      <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:16,color:"#e2e8f0",letterSpacing:"0.04em",marginBottom:12}}>BLOCK {bl}</div>
+                      {BLOCK_LAYOUT[bl].map(({row,seats})=>(
+                        <div key={row} style={{marginBottom:10}}>
+                          <div className="row-label">Row {row}<span style={{color:"#0a1830"}}> ({seats.length})</span></div>
+                          <div style={{display:"flex",flexWrap:"wrap",gap:3}}>
+                            {seats.map(n=>{
+                              const id=sid(bl,row,n); const free=!o?.tables.has(id);
+                              const stu=free?null:mBks().find(b=>b.seat===id&&b.slots.includes(slotFilt));
+                              return (
+                                <div key={n} className={`tbl disp${free?" avail":" taken"}`}
+                                  title={free?`${row}${n}: Free`:`${row}${n}: ${stu?.name||"Occupied"} (${stu?.status||""})`}>
+                                  {row}{n}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </>);
+            })()}
+          </>)}
+
+          {/* ─ LOCKERS ─ */}
+          {view==="lockers"&&(
+            <div>
+              <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:"#e2e8f0",letterSpacing:"0.04em",marginBottom:16}}>LOCKER STATUS — {MONTHS[selMonth]} {year}</div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:20}}>
+                {LOCKERS.map(l=>{
+                  const owner=lockerStatus[l];
+                  return (
+                    <div key={l} className="card" style={{borderLeft:`3px solid ${owner?"#a78bfa":"#1e3355"}`}}>
+                      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:owner?10:0}}>
+                        <div style={{width:42,height:42,borderRadius:8,background:owner?"#1a0f2e":"#08111f",border:`1.5px solid ${owner?"#a78bfa40":"#132040"}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>
+                          {owner?"🔒":"🔓"}
+                        </div>
+                        <div>
+                          <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:20,color:owner?"#a78bfa":"#1e3355",letterSpacing:"0.04em"}}>LOCKER {l}</div>
+                          <div style={{fontSize:10,color:owner?"#64748b":"#0f1e35",fontFamily:"'DM Sans',sans-serif",fontWeight:600}}>{owner?"Assigned":"Available"}</div>
+                        </div>
+                      </div>
+                      {owner&&(
+                        <div style={{background:"#08111f",borderRadius:6,padding:"9px 12px"}}>
+                          <div style={{fontFamily:"'DM Sans',sans-serif",fontWeight:700,color:"#e2e8f0",fontSize:13,marginBottom:3}}>{owner.name}</div>
+                          <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:3}}>
+                            <span style={{background:"#08111f",border:"1px solid #1e3355",color:"#f59e0b",padding:"1px 7px",borderRadius:4,fontSize:10,fontFamily:"'DM Mono',monospace",fontWeight:700}}>Blk {owner.block} · {slabel(owner.seat)}</span>
+                            {owner.slots.map(sl=>{const s=SLOTS.find(x=>x.id===sl);return <span key={sl} className="tag" style={{background:s.color+"15",color:s.color,border:`1px solid ${s.color}25`}}>Slot {sl}</span>;})}
+                          </div>
+                          <div style={{fontSize:10,color:"#334155",fontFamily:"'DM Sans',sans-serif"}}>
+                            {owner.phone&&<span>📞 {owner.phone} · </span>}
+                            <span style={{color:owner.payment?.status==="paid"?"#10b981":"#ef4444"}}>{owner.payment?.status==="paid"?"✓ Paid":"⚠ Unpaid"} · {INR(owner.price||0)}/mo</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,fontSize:12,color:"#334155",fontFamily:"'DM Sans',sans-serif"}}>
+                <div style={{background:"#08111f",borderRadius:8,padding:"10px 14px",display:"flex",gap:10,alignItems:"center"}}>
+                  <span style={{fontSize:20}}>🔒</span>
+                  <span><span style={{color:"#a78bfa",fontWeight:700}}>{Object.values(lockerStatus).filter(v=>v!==null).length}</span> / 6 lockers assigned</span>
+                </div>
+                <div style={{background:"#08111f",borderRadius:8,padding:"10px 14px",display:"flex",gap:10,alignItems:"center"}}>
+                  <span style={{fontSize:20}}>🔓</span>
+                  <span><span style={{color:"#10b981",fontWeight:700}}>{Object.values(lockerStatus).filter(v=>v===null).length}</span> / 6 lockers free (+₹300 each/month)</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ─ STUDENTS ─ */}
+          {view==="students"&&(<>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+              <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:20,color:"#e2e8f0",letterSpacing:"0.04em"}}>{MONTHS[selMonth]} {year} — {mBks().length} Students</div>
+              <button className="btn btn-amber" onClick={()=>setView("admit")}>+ Admit</button>
+            </div>
+            <input className="inp" style={{marginBottom:12}} placeholder="🔍  Search name, seat, phone..." value={search} onChange={e=>setSearch(e.target.value)}/>
+            {fStudents.length===0&&(
+              <div style={{textAlign:"center",padding:"48px 0",color:"#1e3355"}}>
+                <div style={{fontSize:36,marginBottom:10}}>🪑</div>
+                <div style={{fontFamily:"'DM Sans',sans-serif",fontWeight:700,color:"#334155",fontSize:15}}>{mBks().length===0?"No bookings yet":"No results"}</div>
+                {mBks().length===0&&<button className="btn btn-ghost" style={{marginTop:12}} onClick={()=>setView("admit")}>+ Admit First Student</button>}
+              </div>
+            )}
+            <div style={{display:"flex",flexDirection:"column",gap:7}}>
+              {fStudents.map(b=>(
+                <div key={b.id} className="card" style={{borderLeft:`3px solid ${b.status==="confirmed"?"#10b981":"#eab308"}`}}>
+                  <div style={{display:"flex",alignItems:"flex-start",gap:10}}>
+                    <div style={{width:36,height:36,borderRadius:8,background:b.status==="confirmed"?"#071510":"#100d00",border:`1px solid ${b.status==="confirmed"?"#10b98130":"#eab30830"}`,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Bebas Neue',sans-serif",fontSize:17,color:b.status==="confirmed"?"#10b981":"#eab308",flexShrink:0}}>
+                      {b.name[0]?.toUpperCase()}
+                    </div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap",marginBottom:4}}>
+                        <span style={{fontFamily:"'DM Sans',sans-serif",fontWeight:700,color:"#e2e8f0",fontSize:14}}>{b.name}</span>
+                        <span style={{background:"#08111f",border:"1px solid #1e3355",color:"#f59e0b",padding:"1px 7px",borderRadius:4,fontSize:10,fontFamily:"'DM Mono',monospace",fontWeight:700}}>Blk {b.block} · {slabel(b.seat)}</span>
+                        <span className="tag" style={{background:b.status==="confirmed"?"#071510":"#100d00",color:b.status==="confirmed"?"#10b981":"#eab308",border:`1px solid ${b.status==="confirmed"?"#0a2e1a":"#2d2400"}`}}>{b.status==="confirmed"?"✓ Conf":"⏳ Held"}</span>
+                        {b.slots.map(sl=>{const s=SLOTS.find(x=>x.id===sl);return <span key={sl} className="tag" style={{background:s.color+"15",color:s.color,border:`1px solid ${s.color}25`}}>Slot {sl}</span>;})}
+                        {(b.lockers||[]).map(l=><span key={l} className="tag" style={{background:"#1a0f2e",color:"#a78bfa",border:"1px solid #4c1d9530"}}>🔒{l}</span>)}
+                      </div>
+                      <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:3}}>
+                        <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:16,color:"#64748b",letterSpacing:"0.04em"}}>{INR(b.price||0)}/mo</span>
+                        {b.payment?.status==="paid"
+                          ? <span className="tag" style={{background:"#071510",color:"#10b981",border:"1px solid #0a2e1a"}}>✓ {b.payment.method?.toUpperCase()||"PAID"}{b.payment.collectedBy?` · ${b.payment.collectedBy}`:""}</span>
+                          : <span className="tag" style={{background:"#150707",color:"#ef4444",border:"1px solid #2d0f0f"}}>⚠ Unpaid</span>
+                        }
+                      </div>
+                      <div style={{fontSize:10,color:"#1e3355",fontFamily:"'DM Sans',sans-serif",display:"flex",gap:10,flexWrap:"wrap"}}>
+                        {b.phone&&<span>📞 {b.phone}</span>}
+                        {b.note&&<span style={{color:"#eab30855"}}>📝 {b.note}</span>}
+                        {b.payment?.note&&<span style={{color:"#3b82f655"}}>💳 {b.payment.note}</span>}
+                        {b.payment?.paidAt&&<span>Paid {b.payment.paidAt}</span>}
+                        <span>Added {b.createdAt}</span>
+                      </div>
+                    </div>
+                    <div style={{display:"flex",flexDirection:"column",gap:4,flexShrink:0}}>
+                      {b.payment?.status!=="paid"&&<button className="btn btn-green" onClick={()=>{setPayForm({method:"cash",collectedBy:"",note:""});setModal({type:"pay",booking:b});}}>💵 Pay</button>}
+                      <button className="btn btn-ghost" onClick={()=>{setEditPriceVal(b.price||0);setModal({type:"editprice",booking:b});}}>✏ Price</button>
+                      {b.status==="secured"&&<button className="btn btn-ghost" onClick={()=>setModal({type:"confirm",booking:b})}>Confirm</button>}
+                      <button className="btn btn-ghost" onClick={()=>{setExtTgts([]);setModal({type:"extend",booking:b});}}>Extend</button>
+                      <button className="btn btn-red" onClick={()=>setModal({type:"delete",booking:b})}>✕</button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>)}
+        </>)}
+      </div>
+
+      {/* ══ MODALS ══ */}
+      {modal&&(
+        <div className="ovl" onClick={()=>setModal(null)}>
+          <div className="mbox" onClick={e=>e.stopPropagation()}>
+
+            {modal.type==="delete"&&<>
+              <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:"#e2e8f0",marginBottom:8}}>REMOVE STUDENT?</div>
+              <div style={{fontSize:12,color:"#64748b",marginBottom:18,fontFamily:"'DM Sans',sans-serif",lineHeight:1.6}}>
+                <strong style={{color:"#e2e8f0"}}>{modal.booking.name}</strong> · Blk {modal.booking.block} · {slabel(modal.booking.seat)} · {INR(modal.booking.price||0)}/mo<br/>Remove from this month only or ALL months?
+              </div>
+              <div style={{display:"flex",flexDirection:"column",gap:7}}>
+                <button className="btn-red" onClick={()=>removeBk(modal.booking,true)} style={{padding:"10px 18px",fontSize:13}}>Remove from ALL months</button>
+                <button className="btn btn-ghost" style={{color:"#ef4444",borderColor:"#ef444420"}} onClick={()=>removeBk(modal.booking,false)}>{selMonth!==null?MONTHS[selMonth]:"This month"} only</button>
+                <button className="btn btn-ghost" onClick={()=>setModal(null)}>Cancel</button>
+              </div>
+            </>}
+
+            {modal.type==="confirm"&&<>
+              <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:"#e2e8f0",marginBottom:8}}>CONFIRM BOOKING</div>
+              <div style={{fontSize:12,color:"#64748b",marginBottom:6,fontFamily:"'DM Sans',sans-serif",lineHeight:1.6}}>Mark <strong style={{color:"#e2e8f0"}}>{modal.booking.name}</strong> as <span style={{color:"#10b981",fontWeight:700}}>Confirmed</span>.</div>
+              {modal.booking.note&&<div style={{fontSize:11,color:"#eab30877",marginBottom:14,fontFamily:"'DM Sans',sans-serif"}}>📝 {modal.booking.note}</div>}
+              <div style={{display:"flex",gap:7,marginTop:14}}>
+                <button className="btn btn-amber" onClick={()=>confirmBk(modal.booking)}>Confirm ✓</button>
+                <button className="btn btn-ghost" onClick={()=>setModal(null)}>Cancel</button>
+              </div>
+            </>}
+
+            {modal.type==="editprice"&&<>
+              <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:"#e2e8f0",marginBottom:4}}>EDIT PRICE</div>
+              <div style={{fontSize:12,color:"#64748b",marginBottom:16,fontFamily:"'DM Sans',sans-serif",lineHeight:1.6}}>
+                <strong style={{color:"#e2e8f0"}}>{modal.booking.name}</strong> · Blk {modal.booking.block} · {slabel(modal.booking.seat)}<br/>
+                Slots: {modal.booking.slots.join("+")} · Auto: {INR(calcPrice(modal.booking.slots||[],modal.booking.lockers||[]))}
+              </div>
+              <div style={{marginBottom:10}}>
+                <div className="lbl" style={{marginBottom:6}}>Monthly Charge (₹)</div>
+                <input className="inp-price" style={{width:"100%",fontSize:28}} type="number" value={editPriceVal} onChange={e=>setEditPriceVal(e.target.value)}/>
+              </div>
+              <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
+                {[[300,"₹300"],[500,"₹500"],[800,"₹800"],[1000,"₹1000"]].map(([v,lb])=>(
+                  <button key={v} className={`tog${Number(editPriceVal)===v?" on":""}`} onClick={()=>setEditPriceVal(v)}>{lb}</button>
+                ))}
+                <button className="tog" onClick={()=>setEditPriceVal(calcPrice(modal.booking.slots||[],modal.booking.lockers||[]))}>Auto</button>
+              </div>
+              <div style={{display:"flex",gap:7}}>
+                <button className="btn btn-amber" disabled={!editPriceVal||isNaN(Number(editPriceVal))} onClick={()=>saveEditPrice(modal.booking,editPriceVal)}>Save {INR(editPriceVal)}</button>
+                <button className="btn btn-ghost" onClick={()=>setModal(null)}>Cancel</button>
+              </div>
+            </>}
+
+            {modal.type==="pay"&&<>
+              <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:"#e2e8f0",marginBottom:4}}>RECORD PAYMENT</div>
+              <div style={{fontSize:12,color:"#64748b",marginBottom:16,fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}>
+                <strong style={{color:"#e2e8f0"}}>{modal.booking.name}</strong> · Blk {modal.booking.block} · {slabel(modal.booking.seat)}<br/>
+                Amount: <span style={{color:"#f59e0b",fontWeight:700,fontFamily:"'Bebas Neue',sans-serif",fontSize:20}}>{INR(modal.booking.price||0)}</span>/month
+              </div>
+              <div style={{display:"flex",flexDirection:"column",gap:12}}>
+                <div>
+                  <div className="lbl">Method *</div>
+                  <div style={{display:"flex",gap:6}}>
+                    {[["cash","💵 Cash"],["gpay","📱 GPay"]].map(([m,lb])=>(
+                      <button key={m} className={`tog${payForm.method===m?" on":""}`}
+                        style={payForm.method===m?{borderColor:"#3b82f6",color:"#3b82f6",background:"#071520"}:{}}
+                        onClick={()=>setPayForm(f=>({...f,method:m}))}>
+                        {lb}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <div className="lbl">Collected By *</div>
+                  <input className="inp" placeholder="Staff / your name" value={payForm.collectedBy} onChange={e=>setPayForm(f=>({...f,collectedBy:e.target.value}))}/>
+                </div>
+                <div>
+                  <div className="lbl">Note (optional)</div>
+                  <input className="inp" placeholder="e.g. UPI ref #9876" value={payForm.note} onChange={e=>setPayForm(f=>({...f,note:e.target.value}))}/>
+                </div>
+              </div>
+              <div style={{display:"flex",gap:7,marginTop:18}}>
+                <button className="btn btn-amber" disabled={!payForm.method||!payForm.collectedBy.trim()} onClick={()=>recordPay(modal.booking,payForm)}>Record {INR(modal.booking.price||0)} ✓</button>
+                <button className="btn btn-ghost" onClick={()=>setModal(null)}>Cancel</button>
+              </div>
+            </>}
+
+            {modal.type==="extend"&&<>
+              <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:"#e2e8f0",marginBottom:4}}>EXTEND BOOKING</div>
+              <div style={{fontSize:11,color:"#475569",marginBottom:14,fontFamily:"'DM Sans',sans-serif",lineHeight:1.6}}>
+                {modal.booking.name} · Blk {modal.booking.block} · {slabel(modal.booking.seat)} · Slots {modal.booking.slots.join("+")}
+                {(modal.booking.lockers||[]).length>0&&` · Lockers ${modal.booking.lockers.join(",")}`} · {INR(modal.booking.price||0)}/mo<br/>
+                <span style={{color:"#1e3355",fontSize:10}}>✓ = already booked · conflicts auto-skipped</span>
+              </div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:14}}>
+                {MONTHS.map((mo,mi)=>{
+                  const has=!!(data[mKey(year,mi)]||[]).find(b=>b.groupId===modal.booking.groupId);
+                  const sel=extTgts.includes(mi);
+                  return (
+                    <button key={mi} disabled={has} className={`tog${sel?" on":""}`}
+                      style={has?{opacity:.3,cursor:"not-allowed"}:sel?{borderColor:"#f59e0b",color:"#f59e0b",background:"#150f00"}:{}}
+                      onClick={()=>setExtTgts(t=>t.includes(mi)?t.filter(x=>x!==mi):[...t,mi])}>
+                      {mo}{has?" ✓":""}
+                    </button>
+                  );
+                })}
+              </div>
+              {extTgts.length>0&&<div style={{fontSize:11,color:"#f59e0b",marginBottom:12,fontFamily:"'DM Sans',sans-serif"}}>→ {extTgts.map(m=>MONTHS[m]).join(", ")} · Payment: Pending for new months</div>}
+              <div style={{display:"flex",gap:7}}>
+                <button className="btn btn-amber" disabled={!extTgts.length} onClick={()=>extendBk(modal.booking,extTgts)}>Extend →</button>
+                <button className="btn btn-ghost" onClick={()=>setModal(null)}>Cancel</button>
+              </div>
+            </>}
+
+          </div>
+        </div>
+      )}
+
+      {toast&&<div className="toast">{toast}</div>}
+    </div>
+  );
+}
