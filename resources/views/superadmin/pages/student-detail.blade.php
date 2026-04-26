@@ -47,6 +47,11 @@
         position: absolute; font-family: sans-serif; color: #000;
         font-weight: bold; letter-spacing: 0.5px; white-space: nowrap;
     }
+    .sa-cert-field.markst {
+        position: absolute; font-family: sans-serif; color: #000;
+        font-family: Helvetica, Arial, sans-serif;
+        font-weight: 400; letter-spacing: 0.2px; white-space: nowrap;
+    }
     .sa-cert-modal-actions {
         display: flex; gap: 12px; justify-content: center; padding: 20px 0;
     }
@@ -57,6 +62,10 @@
         font-weight: 600; transition: all 0.15s; font-family: inherit;
     }
     .sa-cert-download-btn:hover { background: #f3f4f6; transform: translateY(-1px); }
+    .sa-cert-download-btn:disabled { opacity: 0.75; cursor: not-allowed; transform: none !important; }
+    .sa-cert-download-btn:disabled:hover { background: #fff; transform: none !important; }
+    @keyframes saCertBtnSpin { to { transform: rotate(360deg); } }
+    .sa-cert-download-spinner { animation: saCertBtnSpin 0.9s linear infinite; }
 </style>
 
 <div class="pb-10">
@@ -206,9 +215,10 @@
                 Download PDF
             </button>
         </div>
-    </div>
+</div>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     verifyAdminAccess(function(session) {
@@ -339,8 +349,6 @@ function saShowCertPreview(type) {
     if (!s) return;
 
     var wrapper = document.getElementById('saCertPreviewWrapper');
-    var branchDirector = ((s.branch_director_first || s.first_name || '') + ' ' + (s.branch_director_last || s.last_name || '')).trim().toUpperCase();
-
     var durationText = (s.course_duration || '') + ' MONTH' + ((s.course_duration || 0) > 1 ? 'S' : '');
 
     function saFmtDate(dt) {
@@ -355,19 +363,18 @@ function saShowCertPreview(type) {
 
     if (type === 'certificate') {
         wrapper.innerHTML = '<img src="{{ asset("assets/certificates/certi_sample.jpg") }}">' +
-            '<div class="cert-field" style="top:28.5%;left:32%;width:63%;text-align:center;font-size:14px;">' + (s.student_name || '').toUpperCase() + '</div>' +
-            '<div class="cert-field" style="top:33.5%;left:33%;width:62%;text-align:center;font-size:14px;">' + (s.student_father_name || '').toUpperCase() + '</div>' +
-            '<div class="cert-field" style="top:38.75%;left:37%;width:49%;text-align:center;font-size:14px;">' + (s.registration_number || '').toUpperCase() + '</div>' +
-            '<div class="cert-field" style="top:44%;left:32%;width:59%;text-align:center;font-size:14px;">' + courseFull + '</div>' +
-            '<div class="cert-field" style="top:49%;left:30%;width:24%;text-align:center;font-size:14px;">' + durationText + '</div>' +
-            '<div class="cert-field" style="top:49%;left:58%;width:29%;text-align:center;font-size:14px;">' + (s.performance || '').toUpperCase() + '</div>' +
-            '<div class="cert-field" style="top:54.25%;left:33%;width:55%;text-align:center;font-size:14px;">' + (s.overall_percent ? s.overall_percent + ' %' : '') + '</div>' +
-            '<div class="cert-field" style="top:59.5%;left:33%;width:58%;text-align:center;font-size:14px;">' + studyCentre + '</div>' +
-            '<div class="cert-field" style="top:64.5%;left:31%;width:62%;text-align:center;font-size:14px;">' + (s.branch_code || '').toUpperCase() + '</div>' +
-            '<div class="cert-field" style="top:57.5%;left:11%;width:9%;text-align:center;font-size:14px;">' + (s.marksheet_id || '') + '</div>' +
-            '<div class="cert-field" style="top:66%;left:9%;font-size:14px;">' + certDate + '</div>' +
-            '<div class="cert-field" style="top:76%;left:6%;width:26%;text-align:center;font-size:14px;">' + branchDirector + '</div>' +
-            '<div class="cert-field" style="top:76%;left:65%;width:34%;text-align:center;font-size:14px;">' + dateCertified + '</div>';
+            '<div class="sa-cert-field" style="top:28.5%;left:32%;width:63%;text-align:center;font-size:12px;">' + (s.student_name || '').toUpperCase() + '</div>' +
+            '<div class="sa-cert-field" style="top:33%;left:33%;width:62%;text-align:center;font-size:12px;">' + (s.student_father_name || '').toUpperCase() + '</div>' +
+            '<div class="sa-cert-field" style="top:37.2%;left:37%;width:49%;text-align:center;font-size:12px;">' + (s.registration_number || '').toUpperCase() + '</div>' +
+            '<div class="sa-cert-field" style="top:41.4%;left:32%;width:59%;text-align:center;font-size:12px;">' + courseFull + '</div>' +
+            '<div class="sa-cert-field" style="top:45.8%;left:30%;width:24%;text-align:center;font-size:12px;">' + durationText + '</div>' +
+            '<div class="sa-cert-field" style="top:45.8%;left:58%;width:29%;text-align:center;font-size:12px;">' + (s.performance || '').toUpperCase() + '</div>' +
+            '<div class="sa-cert-field" style="top:50.25%;left:33%;width:55%;text-align:center;font-size:12px;">' + (s.overall_percent ? s.overall_percent + ' %' : '') + '</div>' +
+            '<div class="sa-cert-field" style="top:54.6%;left:33%;width:58%;text-align:center;font-size:12px;">' + studyCentre + '</div>' +
+            '<div class="sa-cert-field" style="top:58.8%;left:31%;width:62%;text-align:center;font-size:12px;">' + (s.branch_code || '').toUpperCase() + '</div>' +
+            '<div class="sa-cert-field" style="top:53.5%;left:14%;width:9%;text-align:center;font-size:12px;">' + (s.marksheet_id || '') + '</div>' +
+            '<div class="sa-cert-field" style="top:61%;left:14%;font-size:12px;">' + certDate + '</div>' +
+            '<div class="sa-cert-field" style="top:69.2%;left:62%;width:34%;text-align:center;font-size:12px;">' + dateCertified + '</div>';
     } else {
         var marks = {};
         try { marks = JSON.parse(s.marks); } catch(e) {}
@@ -377,31 +384,29 @@ function saShowCertPreview(type) {
         var viva = marks['Viva Marks'] || '-';
 
         wrapper.innerHTML = '<img src="{{ asset("assets/certificates/marks_sample.jpg") }}">' +
-            '<div class="sa-cert-field" style="top:20%;left:30%;font-size:14px;">' + (s.registration_number || '').toUpperCase() + '</div>' +
-            '<div class="sa-cert-field" style="top:32%;left:30%;font-size:14px;">' + (s.student_name || '').toUpperCase() + '</div>' +
-            '<div class="sa-cert-field" style="top:37%;left:30%;font-size:14px;">' + (s.student_mother_name || '').toUpperCase() + '</div>' +
-            '<div class="sa-cert-field" style="top:42%;left:30%;font-size:14px;">' + (s.student_father_name || '').toUpperCase() + '</div>' +
-            '<div class="sa-cert-field" style="top:47%;left:30%;font-size:14px;">' + (s.course_name || '').toUpperCase() + '</div>' +
-            '<div class="sa-cert-field" style="top:52%;left:30%;font-size:14px;">' + durationText + '</div>' +
-            '<div class="sa-cert-field" style="top:57%;left:30%;font-size:14px;">' + (s.branch_name || '').toUpperCase() + '</div>' +
-            '<div class="sa-cert-field" style="top:62%;left:30%;font-size:14px;">' + (s.branch_code || '').toUpperCase() + '</div>' +
-            '<div class="sa-cert-field" style="top:52%;left:11%;font-size:12px;">' + (s.marksheet_id || '') + '</div>' +
-            '<div class="sa-cert-field" style="top:60%;left:6%;font-size:11px;">' + certDate + '</div>' +
-            '<div class="sa-cert-field" style="top:20%;left:60%;font-size:12px;text-align:center;width:8%;">100</div>' +
-            '<div class="sa-cert-field" style="top:25%;left:60%;font-size:12px;text-align:center;width:8%;">100</div>' +
-            '<div class="sa-cert-field" style="top:30%;left:60%;font-size:12px;text-align:center;width:8%;">100</div>' +
-            '<div class="sa-cert-field" style="top:35%;left:60%;font-size:12px;text-align:center;width:8%;">100</div>' +
-            '<div class="sa-cert-field" style="top:20%;left:68%;font-size:12px;text-align:center;width:8%;">40</div>' +
-            '<div class="sa-cert-field" style="top:25%;left:68%;font-size:12px;text-align:center;width:8%;">40</div>' +
-            '<div class="sa-cert-field" style="top:30%;left:68%;font-size:12px;text-align:center;width:8%;">40</div>' +
-            '<div class="sa-cert-field" style="top:35%;left:68%;font-size:12px;text-align:center;width:8%;">40</div>' +
-            '<div class="sa-cert-field" style="top:20%;left:77%;font-size:12px;text-align:center;width:10%;">' + written + '</div>' +
-            '<div class="sa-cert-field" style="top:25%;left:77%;font-size:12px;text-align:center;width:10%;">' + practical + '</div>' +
-            '<div class="sa-cert-field" style="top:30%;left:77%;font-size:12px;text-align:center;width:10%;">' + project + '</div>' +
-            '<div class="sa-cert-field" style="top:35%;left:77%;font-size:12px;text-align:center;width:10%;">' + viva + '</div>' +
-            '<div class="sa-cert-field" style="top:40.5%;left:68%;font-size:12px;text-align:center;width:19%;">' + (s.overall_percent ? s.overall_percent + '%' : '') + '</div>' +
-            '<div class="sa-cert-field" style="top:45.5%;left:68%;font-size:12px;text-align:center;width:19%;">' + (s.performance || '').toUpperCase() + '</div>' +
-            '<div class="sa-cert-field" style="top:83%;left:73%;font-size:11px;text-align:center;width:16%;">' + certDate + '</div>';
+            '<div class="sa-cert-field markst" style="top:29%;left:34%;font-size:12px;">' + (s.registration_number || '').toUpperCase() + '</div>' +
+            '<div class="sa-cert-field markst" style="top:38.8%;left:34%;font-size:12px;">' + (s.student_name || '').toUpperCase() + '</div>' +
+            '<div class="sa-cert-field markst" style="top:42.2%;left:34%;font-size:12px;">' + (s.dob || '').toUpperCase() + '</div>' +
+            '<div class="sa-cert-field markst" style="top:45.5%;left:34%;font-size:12px;">' + (s.student_mother_name || '').toUpperCase() + '</div>' +
+            '<div class="sa-cert-field markst" style="top:48.8%;left:34%;font-size:12px;">' + (s.student_father_name || '').toUpperCase() + '</div>' +
+            '<div class="sa-cert-field markst" style="top:52.2%;left:34%;font-size:12px;">' + (s.short_form || '').toUpperCase() + '</div>' +
+            '<div class="sa-cert-field markst" style="top:55.5%;left:34%;font-size:12px;">' + durationText + '</div>' +
+            '<div class="sa-cert-field markst" style="top:58.8%;left:34%;font-size:12px;">' + (s.branch_name || '').toUpperCase() + '</div>' +
+            '<div class="sa-cert-field markst" style="top:62%;left:34%;font-size:12px;">' + (s.branch_code || '').toUpperCase() + '</div>' +
+
+            '<div class="sa-cert-field markst" style="top:51.8%;left:12%;font-size:12px;">' + (s.marksheet_id || '') + '</div>' +
+            '<div class="sa-cert-field markst" style="top:59.2%;left:9%;font-size:12px;">' + certDate + '</div>' +
+
+            '<div class="sa-cert-field markst" style="top:31.8%;left:86%;font-size:14px;text-align:center;width:8%;">' + written + '</div>' +
+            '<div class="sa-cert-field markst" style="top:35.3%;left:86%;font-size:14px;text-align:center;width:8%;">' + practical + '</div>' +
+            '<div class="sa-cert-field markst" style="top:39%;left:86%;font-size:14px;text-align:center;width:8%;">' + project + '</div>' +
+            '<div class="sa-cert-field markst" style="top:42.5%;left:86%;font-size:14px;text-align:center;width:8%;">' + viva + '</div>' +
+
+            '<div class="sa-cert-field markst" style="top:46.5%;left:77%;font-size:12px;text-align:center;">' + (s.overall_percent ? s.overall_percent + '%' : '') + '</div>' +
+            '<div class="sa-cert-field markst" style="top:49.9%;left:72%;font-size:12px;text-align:center;">' + (s.performance || '').toUpperCase() + '</div>' +
+            '<div class="sa-cert-field markst" style="top:69.2%;left:75%;font-size:12px;text-align:center;">' + dateCertified + '</div>' +
+            ((s.verification_qr_src || s.verification_qr_url) ? '<img style="position:absolute;top:28.4%;left:47.4%;width:76px;height:76px;z-index:1;border-radius:0;background:#fff;padding:2px;" src="' + (s.verification_qr_src || s.verification_qr_url) + '" alt="Verification QR">' : '') +
+            '<img style="position: absolute; top:28.8%; left: 54.4%; width: 69px; height:73px; z-index: 1; border-radius: unset !important;" src="' + (s.student_photo_src || s.student_photo) + '">';
     }
 
     document.getElementById('saCertModal').classList.add('active');
@@ -415,11 +420,95 @@ function saCloseCertModal() {
 
 function saDownloadCertPdf() {
     var s = window._saCertStudentData;
-    if (!s) return;
+    if (!s || typeof html2pdf === 'undefined') return;
 
-    var endpoint = _saCurrentDocType === 'certificate' ? '/certificate/download' : '/marksheet/download';
-    var url = API_URL + '/admin' + endpoint + '?student_id=' + s.student_id;
-    window.open(url, '_blank');
+    var preview = document.getElementById('saCertPreviewWrapper');
+    if (!preview) return;
+    var button = document.getElementById('saCertDownloadBtn');
+    if (button && button.disabled) return;
+
+    var originalWidth = preview.style.width;
+    var originalMaxWidth = preview.style.maxWidth;
+    var originalBackground = preview.style.background;
+
+    setSaCertDownloadLoading(true);
+    preview.style.width = '1123px';
+    preview.style.maxWidth = '1123px';
+    preview.style.background = '#ffffff';
+
+    waitForSaPreviewImages(preview).then(function() {
+        var prefix = _saCurrentDocType === 'certificate' ? 'Certificate_' : 'Marksheet_';
+        var filename = prefix + String(s.registration_number || 'document').replace(/\//g, '-') + '.pdf';
+
+        return html2pdf()
+            .set({
+                margin: 0,
+                filename: filename,
+                image: { type: 'jpeg', quality: 1 },
+                html2canvas: {
+                    scale: 3,
+                    useCORS: true,
+                    allowTaint: false,
+                    backgroundColor: '#ffffff',
+                    logging: false
+                },
+                jsPDF: {
+                    unit: 'mm',
+                    format: 'a4',
+                    orientation: 'landscape'
+                }
+            })
+            .from(preview)
+            .save();
+    }).finally(function() {
+        preview.style.width = originalWidth;
+        preview.style.maxWidth = originalMaxWidth;
+        preview.style.background = originalBackground;
+        setSaCertDownloadLoading(false);
+    });
+}
+
+function setSaCertDownloadLoading(isLoading) {
+    var button = document.getElementById('saCertDownloadBtn');
+    if (!button) return;
+
+    if (!button.dataset.defaultHtml) {
+        button.dataset.defaultHtml = button.innerHTML;
+    }
+
+    button.disabled = !!isLoading;
+
+    if (isLoading) {
+        button.innerHTML = '<svg class="sa-cert-download-spinner" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8" opacity="0.25"></circle><path d="M20 12a8 8 0 0 0-8-8"></path></svg>Preparing PDF...';
+    } else {
+        button.innerHTML = button.dataset.defaultHtml;
+    }
+}
+
+function waitForSaPreviewImages(container) {
+    var images = Array.prototype.slice.call(container.querySelectorAll('img'));
+    if (!images.length) {
+        return Promise.resolve();
+    }
+
+    return Promise.all(images.map(function(img) {
+        if (img.complete && img.naturalWidth > 0) {
+            return Promise.resolve();
+        }
+
+        return new Promise(function(resolve) {
+            var settled = false;
+            var finish = function() {
+                if (settled) return;
+                settled = true;
+                resolve();
+            };
+
+            img.addEventListener('load', finish, { once: true });
+            img.addEventListener('error', finish, { once: true });
+            setTimeout(finish, 4000);
+        });
+    }));
 }
 
 document.addEventListener('keydown', function(e) {

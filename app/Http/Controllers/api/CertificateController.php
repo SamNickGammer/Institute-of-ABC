@@ -5,10 +5,145 @@ namespace App\Http\Controllers\api;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Barryvdh\DomPDF\Facade\Pdf;
+use Illuminate\Support\Facades\View;
 
 class CertificateController extends Controller
 {
+    private function getVerificationBaseUrl()
+    {
+        return 'http://abcedupro.com';
+    }
+
+    private function buildStudentVerificationUrl($registrationNumber, $dob)
+    {
+        if (!$registrationNumber || !$dob) {
+            return null;
+        }
+
+        return $this->getVerificationBaseUrl() . '/student_info?' . http_build_query([
+            'rn' => $registrationNumber,
+            'dob' => $dob,
+        ], '', '&', PHP_QUERY_RFC3986);
+    }
+
+    private function buildQrCodeImageUrl($targetUrl, $size = 140)
+    {
+        if (!$targetUrl) {
+            return null;
+        }
+
+        $qrSize = max(80, (int) $size);
+
+        return 'https://api.qrserver.com/v1/create-qr-code/?size=' . $qrSize . 'x' . $qrSize . '&margin=0&format=png&data=' . rawurlencode($targetUrl);
+    }
+
+    private function detectImageMimeType($source = null, $contents = null)
+    {
+        if ($contents) {
+            $finfo = new \finfo(FILEINFO_MIME_TYPE);
+            $detected = $finfo->buffer($contents);
+            if ($detected && strpos($detected, 'image/') === 0) {
+                return $detected;
+            }
+        }
+
+        $extension = strtolower(pathinfo((string) $source, PATHINFO_EXTENSION));
+        $mimeByExtension = [
+            'jpg' => 'image/jpeg',
+            'jpeg' => 'image/jpeg',
+            'png' => 'image/png',
+            'gif' => 'image/gif',
+            'webp' => 'image/webp',
+            'bmp' => 'image/bmp',
+        ];
+
+        return $mimeByExtension[$extension] ?? 'image/jpeg';
+    }
+
+    private function imageContentsToDataUri($contents, $source = null)
+    {
+        if (!$contents) {
+            return null;
+        }
+
+        return 'data:' . $this->detectImageMimeType($source, $contents) . ';base64,' . base64_encode($contents);
+    }
+
+    private function resolveStudentPhotoPath($imageUrl)
+    {
+        if (!$imageUrl) {
+            return null;
+        }
+
+        $parsedPath = parse_url($imageUrl, PHP_URL_PATH) ?: $imageUrl;
+        $relativePath = ltrim(urldecode($parsedPath), '/');
+        $candidates = [];
+
+        if ($relativePath !== '') {
+            $candidates[] = public_path($relativePath);
+            $candidates[] = base_path($relativePath);
+        }
+
+        if (preg_match('#student_photo/(\d+)#', $relativePath, $matches)) {
+            $studentPhotoDir = public_path('student_photo/' . $matches[1]);
+
+            if ($relativePath !== '') {
+                $candidates[] = $studentPhotoDir . '/' . basename($relativePath);
+            }
+
+            if (is_dir($studentPhotoDir)) {
+                $files = glob($studentPhotoDir . '/*');
+                if ($files) {
+                    foreach ($files as $file) {
+                        if (is_file($file)) {
+                            $candidates[] = $file;
+                        }
+                    }
+                }
+            }
+        }
+
+        foreach (array_unique($candidates) as $candidate) {
+            if ($candidate && is_file($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return null;
+    }
+
+    private function imageUrlToDataUri($imageUrl)
+    {
+        if (!$imageUrl) {
+            return null;
+        }
+
+        try {
+            $localPath = $this->resolveStudentPhotoPath($imageUrl);
+            if ($localPath) {
+                $contents = @file_get_contents($localPath);
+                if ($contents !== false) {
+                    return $this->imageContentsToDataUri($contents, $localPath);
+                }
+            }
+
+            if (filter_var($imageUrl, FILTER_VALIDATE_URL)) {
+                $context = stream_context_create([
+                    'http' => ['timeout' => 5],
+                    'https' => ['timeout' => 5],
+                ]);
+                $contents = @file_get_contents($imageUrl, false, $context);
+                if ($contents !== false) {
+                    return $this->imageContentsToDataUri($contents, $imageUrl);
+                }
+            }
+        } catch (\Exception $e) {
+            return null;
+        }
+
+        return null;
+    }
+
     private function getStudentData($studentId)
     {
         return DB::table('student')
@@ -30,6 +165,32 @@ class CertificateController extends Controller
     {
         if (!$date) return '';
         return date('d/m/Y', strtotime($date));
+    }
+
+    private function downloadPdfFromView($viewName, array $data, $filename)
+    {
+        if (!class_exists(\Dompdf\Options::class) || !class_exists(\Dompdf\Dompdf::class)) {
+            return response(View::make($viewName, $data)->render(), 200, [
+                'Content-Type' => 'text/html; charset=UTF-8',
+            ]);
+        }
+
+        $options = new \Dompdf\Options();
+        $options->setIsRemoteEnabled(true);
+        $options->setIsHtml5ParserEnabled(true);
+        $options->setChroot(base_path());
+
+        $dompdf = new \Dompdf\Dompdf($options);
+        $html = View::make($viewName, $data)->render();
+
+        $dompdf->loadHtml($html, 'UTF-8');
+        $dompdf->setPaper('a4', 'landscape');
+        $dompdf->render();
+
+        return response($dompdf->output(), 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+        ]);
     }
 
     public function downloadCertificate(Request $request)
@@ -73,11 +234,8 @@ class CertificateController extends Controller
             'branchDirector' => strtoupper($branchDirector),
         ];
 
-        $pdf = Pdf::loadView('pdf.certificate', $data);
-        $pdf->setPaper('a4', 'landscape');
-
         $filename = 'Certificate_' . str_replace('/', '-', $student->registration_number) . '.pdf';
-        return $pdf->download($filename);
+        return $this->downloadPdfFromView('pdf.certificate', $data, $filename);
     }
 
     public function downloadMarksheet(Request $request)
@@ -102,14 +260,19 @@ class CertificateController extends Controller
         $durationText = $student->course_duration . ' Month' . ($student->course_duration > 1 ? 's' : '');
         $studyCentre = strtoupper($student->branch_name ?? '') . ', ' . strtoupper($student->branch_address ?? '');
         $dateCertified = $this->formatDate($student->admission_date) . ' TO ' . $this->formatDate($student->relieving_date);
+        $studentPhotoSrc = $this->imageUrlToDataUri($student->student_photo) ?: $student->student_photo;
+        $verificationUrl = $this->buildStudentVerificationUrl($student->registration_number, $student->dob);
+        $verificationQrUrl = $this->buildQrCodeImageUrl($verificationUrl);
+        $verificationQrSrc = $this->imageUrlToDataUri($verificationQrUrl) ?: $verificationQrUrl;
 
         $data = [
             'templateBase64' => $templateBase64,
             'studentName' => strtoupper($student->student_name),
+            'dob' => strtoupper($student->dob ?? ''),
             'motherName' => strtoupper($student->student_mother_name),
             'fatherName' => strtoupper($student->student_father_name),
             'registrationNumber' => strtoupper($student->registration_number),
-            'courseName' => strtoupper($student->course_name),
+            'courseName' => strtoupper($student->short_form ?: $student->course_name),
             'duration' => strtoupper($durationText),
             'studyCentre' => $studyCentre,
             'centreCode' => strtoupper($student->branch_code),
@@ -122,12 +285,12 @@ class CertificateController extends Controller
             'vivaMarks' => $marks['Viva Marks'] ?? '-',
             'overallPercent' => ($student->overall_percent ?? '') . ' %',
             'performance' => strtoupper($student->performance ?? ''),
+            'studentPhotoSrc' => $studentPhotoSrc,
+            'verificationUrl' => $verificationUrl,
+            'verificationQrSrc' => $verificationQrSrc,
         ];
 
-        $pdf = Pdf::loadView('pdf.marksheet', $data);
-        $pdf->setPaper('a4', 'landscape');
-
         $filename = 'Marksheet_' . str_replace('/', '-', $student->registration_number) . '.pdf';
-        return $pdf->download($filename);
+        return $this->downloadPdfFromView('pdf.marksheet', $data, $filename);
     }
 }

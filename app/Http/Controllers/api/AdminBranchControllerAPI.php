@@ -29,7 +29,7 @@ class AdminBranchControllerAPI extends Controller
 
     private function getStudentWithRelationsById($studentId)
     {
-        return DB::table('student')
+        $student = DB::table('student')
             ->join('courses', 'student.student_course_id', '=', 'courses.course_id')
             ->leftJoin('branch', 'student.branch_id', '=', 'branch.id')
             ->where('student.student_id', $studentId)
@@ -45,6 +45,135 @@ class AdminBranchControllerAPI extends Controller
                 'branch.address_line1 as branch_address'
             )
             ->first();
+
+        return $this->appendStudentVerificationData($student);
+    }
+
+    private function getVerificationBaseUrl()
+    {
+        return 'http://abcedupro.com';
+    }
+
+    private function buildStudentVerificationUrl($registrationNumber, $dob)
+    {
+        if (!$registrationNumber || !$dob) {
+            return null;
+        }
+
+        return $this->getVerificationBaseUrl() . '/student_info?' . http_build_query([
+            'rn' => $registrationNumber,
+            'dob' => $dob,
+        ], '', '&', PHP_QUERY_RFC3986);
+    }
+
+    private function buildQrCodeImageUrl($targetUrl, $size = 140)
+    {
+        if (!$targetUrl) {
+            return null;
+        }
+
+        $qrSize = max(80, (int) $size);
+
+        return 'https://api.qrserver.com/v1/create-qr-code/?size=' . $qrSize . 'x' . $qrSize . '&margin=0&format=png&data=' . rawurlencode($targetUrl);
+    }
+
+    private function detectImageMimeType($source = null, $contents = null)
+    {
+        if ($contents) {
+            $finfo = new \finfo(FILEINFO_MIME_TYPE);
+            $detected = $finfo->buffer($contents);
+            if ($detected && strpos($detected, 'image/') === 0) {
+                return $detected;
+            }
+        }
+
+        $extension = strtolower(pathinfo((string) $source, PATHINFO_EXTENSION));
+        $mimeByExtension = [
+            'jpg' => 'image/jpeg',
+            'jpeg' => 'image/jpeg',
+            'png' => 'image/png',
+            'gif' => 'image/gif',
+            'webp' => 'image/webp',
+            'bmp' => 'image/bmp',
+        ];
+
+        return $mimeByExtension[$extension] ?? 'image/png';
+    }
+
+    private function resolveImagePath($imageUrl)
+    {
+        if (!$imageUrl) {
+            return null;
+        }
+
+        $parsedPath = parse_url($imageUrl, PHP_URL_PATH) ?: $imageUrl;
+        $relativePath = ltrim(urldecode($parsedPath), '/');
+        $candidates = [];
+
+        if ($relativePath !== '') {
+            $candidates[] = public_path($relativePath);
+            $candidates[] = base_path($relativePath);
+        }
+
+        foreach (array_unique($candidates) as $candidate) {
+            if ($candidate && is_file($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return null;
+    }
+
+    private function imageUrlToDataUri($imageUrl)
+    {
+        if (!$imageUrl) {
+            return null;
+        }
+
+        try {
+            $localPath = $this->resolveImagePath($imageUrl);
+            if ($localPath) {
+                $contents = @file_get_contents($localPath);
+                if ($contents !== false) {
+                    return 'data:' . $this->detectImageMimeType($localPath, $contents) . ';base64,' . base64_encode($contents);
+                }
+            }
+
+            if (!filter_var($imageUrl, FILTER_VALIDATE_URL)) {
+                return null;
+            }
+
+            $context = stream_context_create([
+                'http' => ['timeout' => 5],
+                'https' => ['timeout' => 5],
+            ]);
+
+            $contents = @file_get_contents($imageUrl, false, $context);
+            if ($contents === false) {
+                return null;
+            }
+
+            return 'data:' . $this->detectImageMimeType($imageUrl, $contents) . ';base64,' . base64_encode($contents);
+        } catch (\Exception $e) {
+            return null;
+        }
+    }
+
+    private function appendStudentVerificationData($student)
+    {
+        if (!$student) {
+            return $student;
+        }
+
+        $student->verification_url = $this->buildStudentVerificationUrl(
+            $student->registration_number ?? null,
+            $student->dob ?? null
+        );
+        $student->verification_qr_url = $this->buildQrCodeImageUrl($student->verification_url);
+        $student->verification_qr_src = $this->imageUrlToDataUri($student->verification_qr_url) ?: $student->verification_qr_url;
+        $student->student_photo_src = $this->imageUrlToDataUri($student->student_photo) ?: $student->student_photo;
+
+        return $student;
     }
 
     private function getStudentsWithRelationsQuery()

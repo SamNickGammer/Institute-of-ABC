@@ -11,10 +11,15 @@
     .container img { position: absolute; top: 0; left: 0; width: 297mm; height: 190.08mm; }
     .field {
         position: absolute;
-        font-family: sans-serif;
+        font-family: Helvetica, Arial, sans-serif;
         color: #000;
-        font-weight: bold;
-        letter-spacing: 0.5px;
+        font-weight: 400;
+        letter-spacing: 0.2px;
+        white-space: nowrap;
+    }
+    .field.markst {
+        font-family: Helvetica, Arial, sans-serif;
+        font-weight: 400;
     }
 </style>
 </head>
@@ -24,61 +29,68 @@
     <img src="data:image/jpeg;base64,{{ $templateBase64 }}" alt="Marksheet template">
 
     {{-- Registration No --}}
-    <div class="field" style="top: 20%; left: 30%; font-size: 11px;">{{ $registrationNumber }}</div>
+    <div class="field markst" style="top: 29%; left: 34%; font-size: 12px;">{{ $registrationNumber }}</div>
 
     {{-- Student Name --}}
-    <div class="field" style="top: 32%; left: 30%; font-size: 11px;">{{ $studentName }}</div>
+    <div class="field markst" style="top: 38.8%; left: 34%; font-size: 12px;">{{ $studentName }}</div>
+
+    {{-- Date of Birth --}}
+    <div class="field markst" style="top: 42.2%; left: 34%; font-size: 12px;">{{ $dob }}</div>
 
     {{-- Mother's Name --}}
-    <div class="field" style="top: 37%; left: 30%; font-size: 11px;">{{ $motherName }}</div>
+    <div class="field markst" style="top: 45.5%; left: 34%; font-size: 12px;">{{ $motherName }}</div>
 
     {{-- Father's Name --}}
-    <div class="field" style="top: 42%; left: 30%; font-size: 11px;">{{ $fatherName }}</div>
+    <div class="field markst" style="top: 48.8%; left: 34%; font-size: 12px;">{{ $fatherName }}</div>
 
     {{-- Course Name --}}
-    <div class="field" style="top: 47%; left: 30%; font-size: 11px;">{{ $courseName }}</div>
+    <div class="field markst" style="top: 52.2%; left: 34%; font-size: 12px;">{{ $courseName }}</div>
 
     {{-- Duration --}}
-    <div class="field" style="top: 52%; left: 30%; font-size: 11px;">{{ $duration }}</div>
+    <div class="field markst" style="top: 55.5%; left: 34%; font-size: 12px;">{{ $duration }}</div>
 
     {{-- Study Centre --}}
-    <div class="field" style="top: 57%; left: 30%; font-size: 11px;">{{ $studyCentre }}</div>
+    <div class="field markst" style="top: 58.8%; left: 34%; font-size: 12px;">{{ $studyCentre }}</div>
 
     {{-- Centre Code --}}
-    <div class="field" style="top: 62%; left: 30%; font-size: 11px;">{{ $centreCode }}</div>
+    <div class="field markst" style="top: 62%; left: 34%; font-size: 12px;">{{ $centreCode }}</div>
 
     {{-- Sr. No. --}}
-    <div class="field" style="top: 52%; left: 11%; font-size: 10px;">{{ $srNo }}</div>
+    <div class="field markst" style="top: 51.8%; left: 12%; font-size: 12px;">{{ $srNo }}</div>
 
     {{-- Date of Issue --}}
-    <div class="field" style="top: 60%; left: 6%; font-size: 9px;">{{ $dateOfIssue }}</div>
-
-    {{-- Marks Table - Full Marks (100 for all) --}}
-    <div class="field" style="top: 20%; left: 60%; font-size: 10px; text-align: center; width: 8%;">100</div>
-    <div class="field" style="top: 25%; left: 60%; font-size: 10px; text-align: center; width: 8%;">100</div>
-    <div class="field" style="top: 30%; left: 60%; font-size: 10px; text-align: center; width: 8%;">100</div>
-    <div class="field" style="top: 35%; left: 60%; font-size: 10px; text-align: center; width: 8%;">100</div>
-
-    {{-- Pass Marks (40 for all) --}}
-    <div class="field" style="top: 20%; left: 68%; font-size: 10px; text-align: center; width: 8%;">40</div>
-    <div class="field" style="top: 25%; left: 68%; font-size: 10px; text-align: center; width: 8%;">40</div>
-    <div class="field" style="top: 30%; left: 68%; font-size: 10px; text-align: center; width: 8%;">40</div>
-    <div class="field" style="top: 35%; left: 68%; font-size: 10px; text-align: center; width: 8%;">40</div>
+    <div class="field markst" style="top: 59.2%; left: 9%; font-size: 12px;">{{ $dateOfIssue }}</div>
 
     {{-- Marks Obtained --}}
-    <div class="field" style="top: 20%; left: 77%; font-size: 10px; text-align: center; width: 10%;">{{ $writtenMarks }}</div>
-    <div class="field" style="top: 25%; left: 77%; font-size: 10px; text-align: center; width: 10%;">{{ $practicalMarks }}</div>
-    <div class="field" style="top: 30%; left: 77%; font-size: 10px; text-align: center; width: 10%;">{{ $projectMarks }}</div>
-    <div class="field" style="top: 35%; left: 77%; font-size: 10px; text-align: center; width: 10%;">{{ $vivaMarks }}</div>
+    <div class="field markst" style="top: 31.8%; left: 86%; font-size: 14px; text-align: center; width: 8%;">{{ $writtenMarks }}</div>
+    <div class="field markst" style="top: 35.3%; left: 86%; font-size: 14px; text-align: center; width: 8%;">{{ $practicalMarks }}</div>
+    <div class="field markst" style="top: 39%; left: 86%; font-size: 14px; text-align: center; width: 8%;">{{ $projectMarks }}</div>
+    <div class="field markst" style="top: 42.5%; left: 86%; font-size: 14px; text-align: center; width: 8%;">{{ $vivaMarks }}</div>
 
     {{-- Overall Percentage --}}
-    <div class="field" style="top: 40.5%; left: 68%; font-size: 10px; text-align: center; width: 19%;">{{ $overallPercent }}</div>
+    <div class="field markst" style="top: 46.5%; left: 77%; font-size: 12px; text-align: center;">{{ $overallPercent }}</div>
 
     {{-- Performance --}}
-    <div class="field" style="top: 45.5%; left: 68%; font-size: 10px; text-align: center; width: 19%;">{{ $performance }}</div>
+    <div class="field markst" style="top: 49.9%; left: 72%; font-size: 12px; text-align: center;">{{ $performance }}</div>
 
     {{-- Date Certified --}}
-    <div class="field" style="top: 83%; left: 73%; font-size: 9px; text-align: center; width: 16%;">{{ $dateCertified }}</div>
+    <div class="field markst" style="top: 69.2%; left: 75%; font-size: 12px; text-align: center;">{{ $dateCertified }}</div>
+
+    @if(!empty($verificationQrSrc))
+    <img
+        src="{{ $verificationQrSrc }}"
+        alt="Verification QR"
+        style="position:absolute;top:28.4%;left:47.4%;width:76px;height:76px;z-index:1;border-radius:0;background:#fff;padding:2px;"
+    >
+    @endif
+
+    @if(!empty($studentPhotoSrc))
+    <img
+        src="{{ $studentPhotoSrc }}"
+        alt="Student photo"
+        style="position:absolute;top:28.8%;left:54.4%;width:69px;height:73px;z-index:1;border-radius:0;"
+    >
+    @endif
 </div>
 </div>
 </body>
