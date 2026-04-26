@@ -19,6 +19,13 @@ class SuperAdminControllerWEB extends Controller
         ]);
     }
 
+    public function library()
+    {
+        return view('superadmin.superadmin', [
+            'component' => 'superadmin.pages.library'
+        ]);
+    }
+
     public function allStudents()
     {
         return view('superadmin.superadmin', [
@@ -44,6 +51,13 @@ class SuperAdminControllerWEB extends Controller
     {
         return view('superadmin.superadmin', [
             'component' => 'superadmin.pages.courses'
+        ]);
+    }
+
+    public function settings()
+    {
+        return view('superadmin.superadmin', [
+            'component' => 'superadmin.pages.settings'
         ]);
     }
 

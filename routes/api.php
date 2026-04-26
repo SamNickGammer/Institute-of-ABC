@@ -47,4 +47,5 @@ Route::prefix('admin')->name('admin.')->group(function () {
     Route::post('/student/get_by_id', [AdminBranchControllerAPI::class, 'getStudentById']);
     Route::post('/dashboard/summary', [AdminBranchControllerAPI::class, 'getSuperadminDashboardSummary']);
     Route::post('/admin/set_password', [AdminBranchControllerAPI::class, 'adminSetPasswordForBranch']);
+    Route::post('/update_credentials', [AdminBranchControllerAPI::class, 'updateAdminCredentials']);
 });

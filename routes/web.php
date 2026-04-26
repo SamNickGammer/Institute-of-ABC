@@ -42,10 +42,12 @@ Route::get('/admin/{any?}', function ($any = '') { return redirect('/branch/' . 
 Route::prefix('admin-abc')->name('superadmin.')->group(function () {
     Route::get('/login', [SuperAdminControllerWEB::class, 'login'])->name('login');
     Route::get('/', [SuperAdminControllerWEB::class, 'dashboard'])->name('dashboard');
+    Route::get('/library', [SuperAdminControllerWEB::class, 'library'])->name('library');
     Route::get('/all-students', [SuperAdminControllerWEB::class, 'allStudents'])->name('allStudents');
     Route::get('/certificate-approvals', [SuperAdminControllerWEB::class, 'certificateApprovals'])->name('certificateApprovals');
     Route::get('/branches', [SuperAdminControllerWEB::class, 'branches'])->name('branches');
     Route::get('/courses', [SuperAdminControllerWEB::class, 'courses'])->name('courses');
+    Route::get('/settings', [SuperAdminControllerWEB::class, 'settings'])->name('settings');
     Route::get('/student', [SuperAdminControllerWEB::class, 'studentDetail'])->name('studentDetail');
     Route::get('/edit-student', [SuperAdminControllerWEB::class, 'editStudent'])->name('editStudent');
     Route::get('/branch-detail', [SuperAdminControllerWEB::class, 'branchDetail'])->name('branchDetail');

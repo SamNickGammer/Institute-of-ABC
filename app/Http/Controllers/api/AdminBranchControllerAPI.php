@@ -2233,4 +2233,96 @@ class AdminBranchControllerAPI extends Controller
         }
     }
 
+    public function updateAdminCredentials(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'admin_branch_id' => 'required|exists:branch,id',
+            'username' => 'required|string|max:50',
+            'current_password' => 'required|string|min:6',
+            'new_password' => 'nullable|string|min:6|different:current_password|required_with:new_password_confirmation',
+            'new_password_confirmation' => 'nullable|string|same:new_password|required_with:new_password',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'error' => true,
+                'message' => 'Validation failed.',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        try {
+            $validated = $validator->validated();
+            $admin = $this->getAdminBranchById($validated['admin_branch_id']);
+
+            if (!$admin) {
+                return response()->json([
+                    'error' => true,
+                    'message' => 'Unauthorized.',
+                ], 403);
+            }
+
+            if (!EncryptionAndCompare::compare($validated['current_password'], $admin->password)) {
+                return response()->json([
+                    'error' => true,
+                    'message' => 'Current password is incorrect.',
+                ], 401);
+            }
+
+            $newUsername = trim($validated['username']);
+            $newPassword = $validated['new_password'] ?? null;
+
+            $usernameExists = DB::table('branch')
+                ->whereRaw('LOWER(branch_code) = ?', [strtolower($newUsername)])
+                ->where('id', '!=', $admin->id)
+                ->exists();
+
+            if ($usernameExists) {
+                return response()->json([
+                    'error' => true,
+                    'message' => 'This username is already in use.',
+                ], 422);
+            }
+
+            $updates = [];
+
+            if ($newUsername !== (string) $admin->branch_code) {
+                $updates['branch_code'] = $newUsername;
+            }
+
+            if (!empty($newPassword)) {
+                $updates['pass'] = $newPassword;
+                $updates['password'] = EncryptionAndCompare::hash($newPassword);
+            }
+
+            if (empty($updates)) {
+                return response()->json([
+                    'error' => true,
+                    'message' => 'No changes found to update.',
+                ], 422);
+            }
+
+            $updates['updated_at'] = now();
+
+            DB::table('branch')
+                ->where('id', $admin->id)
+                ->update($updates);
+
+            return response()->json([
+                'error' => false,
+                'message' => 'Admin credentials updated successfully. Please login again.',
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('Failed to update admin credentials', [
+                'error' => $e->getMessage(),
+                'admin_branch_id' => $request->input('admin_branch_id'),
+            ]);
+
+            return response()->json([
+                'error' => true,
+                'message' => 'Failed to update admin credentials.',
+            ], 500);
+        }
+    }
+
 }
